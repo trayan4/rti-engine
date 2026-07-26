@@ -7,7 +7,9 @@ authors = [
     { name = "trayan4", email = "trayandas@gmail.com" }
 ]
 requires-python = ">=3.13"
-dependencies = []
+dependencies = [
+    "pydantic-settings>=2.14.2",
+]
 
 [dependency-groups]
 dev = [

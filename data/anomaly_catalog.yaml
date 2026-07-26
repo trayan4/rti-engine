@@ -1,0 +1,229 @@
+version: 1
+
+generation:
+  seed: 20260726
+  total_employees: 3000
+  countries: [DE, FR, ES]
+  currency: EUR
+  reference_date: "2026-01-01"
+  job_families: [Sales, Engineering, Marketing, Legal, Operations]
+  levels: [L1, L2, L3, L4, L5]
+
+defaults:
+  female_share: 0.45
+  base_salary_sigma: 0.18
+  bonus_pct_mean: 0.12
+  bonus_pct_sigma: 0.05
+  part_time_share: 0.10
+  mean_tenure_years: 4.5
+
+thresholds:
+  jpa_trigger_pct: 5.0
+  significance_alpha: 0.05
+  min_reportable_group_size: 10
+
+scenarios:
+  - id: S1
+    name: clear_unexplained_gender_gap
+    description: >
+      A genuine, unexplained pay gap that survives controls for level,
+      tenure and job family. The baseline positive case.
+    population:
+      country: DE
+      job_family: Sales
+      level: L3
+      headcount: 120
+      female_share: 0.45
+    injection:
+      mechanism: direct_base_multiplier
+      female_base_multiplier: 0.93
+    ground_truth:
+      must_flag: true
+      metric: base_salary
+      expected_gap_pct: [6.0, 8.0]
+      statistically_significant: true
+      attribution: unexplained_after_controls
+      exceeds_jpa_threshold: true
+
+  - id: S2
+    name: explained_gap_false_positive_trap
+    description: >
+      A large raw gap that disappears entirely once tenure and level are
+      controlled for. The system must explain it, not flag it.
+    population:
+      country: FR
+      job_family: Engineering
+      level: L4
+      headcount: 140
+      female_share: 0.42
+    injection:
+      mechanism: tenure_skew
+      female_base_multiplier: 1.00
+      female_mean_tenure_years: 2.0
+      male_mean_tenure_years: 8.0
+    ground_truth:
+      must_flag: false
+      metric: base_salary
+      expected_raw_gap_pct: [7.0, 9.0]
+      expected_adjusted_gap_pct: [-1.0, 1.5]
+      statistically_significant: false
+      attribution: explained_by_tenure
+
+  - id: S3
+    name: large_but_not_significant
+    description: >
+      A wide apparent gap in a group far too small to support a
+      conclusion. Must be reported as inconclusive, not as a finding.
+    population:
+      country: ES
+      job_family: Legal
+      level: L5
+      headcount: 9
+      female_share: 0.44
+    injection:
+      mechanism: direct_base_multiplier
+      female_base_multiplier: 0.88
+    ground_truth:
+      must_flag: false
+      metric: base_salary
+      expected_gap_pct: [10.0, 14.0]
+      statistically_significant: false
+      attribution: insufficient_sample_size
+      required_language: not_statistically_significant
+
+  - id: S4
+    name: bonus_only_gap
+    description: >
+      Base pay is equal; the gap lives entirely in variable pay. The
+      directive covers variable components, so total compensation must
+      be assessed, not just base.
+    population:
+      country: DE
+      job_family: Marketing
+      level: L2
+      headcount: 90
+      female_share: 0.50
+    injection:
+      mechanism: bonus_multiplier
+      female_base_multiplier: 1.00
+      female_bonus_multiplier: 0.45
+    ground_truth:
+      must_flag: true
+      metric: total_compensation
+      expected_base_gap_pct: [-1.0, 1.0]
+      expected_total_comp_gap_pct: [5.0, 7.0]
+      statistically_significant: true
+      attribution: variable_pay
+      exceeds_jpa_threshold: true
+
+  - id: S5
+    name: intersectional_age_gender
+    description: >
+      A penalty that exists only at the intersection of gender and age.
+      A gender-only model misses it; an interaction model finds it.
+    population:
+      country: FR
+      job_family: Engineering
+      levels: [L2, L3]
+      headcount: 240
+      female_share: 0.40
+    injection:
+      mechanism: interaction_multiplier
+      interaction_on: [gender, age_band]
+      female_age_45_plus_multiplier: 0.90
+      female_under_45_multiplier: 1.00
+    ground_truth:
+      must_flag: true
+      metric: base_salary
+      expected_naive_gap_pct: [1.0, 4.0]
+      expected_interaction_gap_pct: [8.0, 11.0]
+      statistically_significant: true
+      attribution: intersectional_gender_age
+      requires_interaction_model: true
+
+  - id: S6
+    name: threshold_straddle
+    description: >
+      Two groups either side of the 5% joint pay assessment trigger.
+      They must be routed and worded differently despite both being gaps.
+    sub_populations:
+      - label: above_threshold
+        country: ES
+        job_family: Sales
+        level: L3
+        headcount: 110
+        female_share: 0.46
+        injection:
+          mechanism: direct_base_multiplier
+          female_base_multiplier: 0.935
+        ground_truth:
+          must_flag: true
+          expected_gap_pct: [6.0, 7.0]
+          exceeds_jpa_threshold: true
+          severity: joint_pay_assessment_required
+      - label: below_threshold
+        country: DE
+        job_family: Operations
+        level: L4
+        headcount: 105
+        female_share: 0.48
+        injection:
+          mechanism: direct_base_multiplier
+          female_base_multiplier: 0.965
+        ground_truth:
+          must_flag: true
+          expected_gap_pct: [3.0, 4.0]
+          exceeds_jpa_threshold: false
+          severity: report_only
+
+  - id: S7
+    name: part_time_confound
+    description: >
+      Women are disproportionately part-time, producing a large gap in
+      actual paid amounts that vanishes once salaries are normalized to
+      full-time equivalent. Must not be flagged.
+    population:
+      country: ES
+      job_family: Operations
+      level: L2
+      headcount: 130
+      female_share: 0.52
+    injection:
+      mechanism: part_time_skew
+      female_base_multiplier: 1.00
+      female_part_time_share: 0.40
+      male_part_time_share: 0.05
+    ground_truth:
+      must_flag: false
+      expected_unnormalized_gap_pct: [13.0, 17.0]
+      expected_fte_normalized_gap_pct: [-1.0, 1.5]
+      statistically_significant: false
+      attribution: explained_by_working_pattern
+      requires_fte_normalization: true
+
+  - id: S8
+    name: dirty_data
+    description: >
+      Real HR exports are messy. These defects must be detected,
+      normalized and logged — never silently computed over.
+    population:
+      country: [FR, ES]
+      applies_to: existing_rows
+    injection:
+      mechanism: data_quality_defects
+      missing_performance_rating_share: 0.03
+      duplicate_row_count: 20
+      monthly_salary_rows:
+        country: ES
+        count: 40
+    ground_truth:
+      must_flag: false
+      must_detect:
+        - missing_values
+        - duplicate_rows
+        - inconsistent_salary_period
+      must_normalize:
+        - deduplicate
+        - annualize_monthly_salaries
+      must_log: true
+      must_never: silently_compute

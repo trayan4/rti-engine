@@ -1,4 +1,4 @@
-.PHONY: install lint format typecheck test check reqs
+.PHONY: install lint format typecheck test check reqs data
 
 install:
 	uv sync
@@ -19,3 +19,6 @@ check: lint typecheck test
 
 reqs:
 	uv export --format requirements-txt > requirements.txt
+
+data:
+	uv run python -m rti_engine.analytics.generate

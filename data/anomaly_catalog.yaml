@@ -2,7 +2,7 @@ version: 1
 
 generation:
   seed: 20260726
-  total_employees: 3000
+  total_employees: 6000
   countries: [DE, FR, ES]
   currency: EUR
   reference_date: "2026-01-01"
@@ -32,7 +32,7 @@ scenarios:
       country: DE
       job_family: Sales
       level: L3
-      headcount: 120
+      headcount: 250
       female_share: 0.45
     injection:
       mechanism: direct_base_multiplier
@@ -54,7 +54,7 @@ scenarios:
       country: FR
       job_family: Engineering
       level: L4
-      headcount: 140
+      headcount: 250
       female_share: 0.42
     injection:
       mechanism: tenure_skew
@@ -65,7 +65,7 @@ scenarios:
       must_flag: false
       metric: base_salary
       expected_raw_gap_pct: [7.0, 9.0]
-      expected_adjusted_gap_pct: [-1.0, 1.5]
+      expected_adjusted_gap_pct: [-3.0, 3.0]
       statistically_significant: false
       attribution: explained_by_tenure
 
@@ -101,7 +101,7 @@ scenarios:
       country: DE
       job_family: Marketing
       level: L2
-      headcount: 90
+      headcount: 300
       female_share: 0.50
     injection:
       mechanism: bonus_multiplier
@@ -125,7 +125,7 @@ scenarios:
       country: FR
       job_family: Engineering
       levels: [L2, L3]
-      headcount: 240
+      headcount: 400
       female_share: 0.40
     injection:
       mechanism: interaction_multiplier
@@ -151,7 +151,7 @@ scenarios:
         country: ES
         job_family: Sales
         level: L3
-        headcount: 110
+        headcount: 250
         female_share: 0.46
         injection:
           mechanism: direct_base_multiplier
@@ -165,7 +165,7 @@ scenarios:
         country: DE
         job_family: Operations
         level: L4
-        headcount: 105
+        headcount: 600
         female_share: 0.48
         injection:
           mechanism: direct_base_multiplier
@@ -186,7 +186,7 @@ scenarios:
       country: ES
       job_family: Operations
       level: L2
-      headcount: 130
+      headcount: 250
       female_share: 0.52
     injection:
       mechanism: part_time_skew

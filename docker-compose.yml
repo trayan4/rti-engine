@@ -1,0 +1,42 @@
+services:
+  postgres:
+    image: postgres:16
+    container_name: rti-postgres
+    environment:
+      POSTGRES_USER: rti
+      POSTGRES_PASSWORD: rti_local_dev
+      POSTGRES_DB: rti_engine
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U rti -d rti_engine"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  neo4j:
+    image: neo4j:5-community
+    container_name: rti-neo4j
+    environment:
+      NEO4J_AUTH: neo4j/rti_local_dev
+    ports:
+      - "7474:7474"
+      - "7687:7687"
+    volumes:
+      - neo4j_data:/data
+
+  jaeger:
+    image: jaegertracing/all-in-one:latest
+    container_name: rti-jaeger
+    environment:
+      COLLECTOR_OTLP_ENABLED: "true"
+    ports:
+      - "16686:16686"
+      - "4317:4317"
+      - "4318:4318"
+
+volumes:
+  postgres_data:
+  neo4j_data:

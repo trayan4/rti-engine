@@ -1,0 +1,39 @@
+[project]
+name = "rti-engine"
+version = "0.1.0"
+description = "Agentic compliance platform for the EU Pay Transparency Directive (2023/970)"
+readme = "README.md"
+authors = [
+    { name = "trayan4", email = "trayandas@gmail.com" }
+]
+requires-python = ">=3.13"
+dependencies = []
+
+[dependency-groups]
+dev = [
+    "ruff",
+    "mypy",
+    "pytest",
+    "pytest-asyncio",
+    "pre-commit",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.ruff]
+line-length = 100
+target-version = "py313"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM", "N"]
+
+[tool.mypy]
+python_version = "3.13"
+strict = true
+mypy_path = "src"
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]

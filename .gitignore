@@ -1,0 +1,11 @@
+.venv/
+__pycache__/
+*.pyc
+.env
+.ruff_cache/
+.mypy_cache/
+.pytest_cache/
+.coverage
+data/generated/
+*.parquet
+.DS_Store

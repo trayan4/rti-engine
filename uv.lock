@@ -388,6 +388,15 @@ wheels = [
 ]
 
 [[package]]
+name = "pulp"
+version = "3.3.2"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/4e/70/69be07a67621ad804d6cf347965eb4e0d7786a97330d99c31d735aaa6c5a/pulp-3.3.2.tar.gz", hash = "sha256:d0904700c207ac11e25e3b1213b70eae1d6fb25faa719d75f3f15054901258c0", size = 16305346, upload-time = "2026-05-25T09:41:26.207Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/dd/6e/d674f1dde91c71e2ac19e5e5cf1ee6d5845e3aefecd9c39ed9c4b0c9a696/pulp-3.3.2-py3-none-any.whl", hash = "sha256:631b166f72086971a9597f7a0233ababa99bb8d50a01cd543f7758be5a9f86c0", size = 16391742, upload-time = "2026-05-25T09:41:22.2Z" },
+]
+
+[[package]]
 name = "pyarrow"
 version = "25.0.0"
 source = { registry = "https://pypi.org/simple" }
@@ -616,6 +625,7 @@ dependencies = [
     { name = "faker" },
     { name = "numpy" },
     { name = "pandas" },
+    { name = "pulp" },
     { name = "pyarrow" },
     { name = "pydantic-settings" },
     { name = "pyyaml" },
@@ -638,6 +648,7 @@ requires-dist = [
     { name = "faker", specifier = ">=40.36.0" },
     { name = "numpy", specifier = ">=2.5.1" },
     { name = "pandas", specifier = ">=3.0.5" },
+    { name = "pulp", specifier = ">=3.3.2" },
     { name = "pyarrow", specifier = ">=25.0.0" },
     { name = "pydantic-settings", specifier = ">=2.14.2" },
     { name = "pyyaml", specifier = ">=6.0.3" },

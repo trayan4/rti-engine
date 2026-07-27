@@ -18,7 +18,7 @@ Neither surface returns employee data. Personal pay information lives
 behind the analytics server and its authorization checks.
 """
 
-from typing import Any
+from typing import Any, Literal
 
 from fastmcp import FastMCP
 
@@ -30,6 +30,14 @@ KNOWN_JURISDICTIONS: frozenset[str] = frozenset({"DE", "FR", "ES"})
 
 MIN_ARTICLE = 1
 MAX_ARTICLE = 37
+
+Jurisdiction = Literal["DE", "FR", "ES"]
+"""Constrains the tool schema so a model cannot emit an invalid country.
+
+Given a bare string type, a model asked about Spain sends "Spain". The
+runtime check still stands as defence in depth, but a value the schema
+forbids never reaches it.
+"""
 
 mcp: FastMCP[Any] = FastMCP("rti-knowledge")
 
@@ -62,7 +70,7 @@ def _article(number: int) -> int:
 
 
 @mcp.tool()
-def search_regulatory_knowledge(query: str, jurisdiction: str) -> list[dict[str, Any]]:
+def search_regulatory_knowledge(query: str, jurisdiction: Jurisdiction) -> list[dict[str, Any]]:
     """Find passages relevant to a question, scoped to one country.
 
     Returns the directive, the company policy, and that country's national
@@ -91,7 +99,7 @@ def search_regulatory_knowledge(query: str, jurisdiction: str) -> list[dict[str,
 
 
 @mcp.tool()
-def get_jurisdiction_status(jurisdiction: str) -> dict[str, Any]:
+def get_jurisdiction_status(jurisdiction: Jurisdiction) -> dict[str, Any]:
     """Report whether a country has transposed the directive.
 
     The first question any regulatory reasoning must settle: an obligation
@@ -105,7 +113,9 @@ def get_jurisdiction_status(jurisdiction: str) -> dict[str, Any]:
 
 
 @mcp.tool()
-def get_national_position_on_article(jurisdiction: str, article: int) -> list[dict[str, Any]]:
+def get_national_position_on_article(
+    jurisdiction: Jurisdiction, article: int
+) -> list[dict[str, Any]]:
     """Report what national law currently provides in respect of one article.
 
     An empty result means the country has no corresponding provision,
@@ -143,7 +153,7 @@ def get_policy_sections_for_article(article: int) -> list[dict[str, Any]]:
 
 
 @mcp.tool()
-def list_articles_without_national_basis(jurisdiction: str) -> list[dict[str, Any]]:
+def list_articles_without_national_basis(jurisdiction: Jurisdiction) -> list[dict[str, Any]]:
     """List transparency obligations with no counterpart in a country's law.
 
     The compliance gap: what the directive requires but national law does
@@ -153,7 +163,7 @@ def list_articles_without_national_basis(jurisdiction: str) -> list[dict[str, An
 
 
 @mcp.tool()
-def list_provisions_in_jurisdiction(jurisdiction: str) -> list[dict[str, Any]]:
+def list_provisions_in_jurisdiction(jurisdiction: Jurisdiction) -> list[dict[str, Any]]:
     """List every national provision recorded for a country.
 
     Each carries its own instrument and threshold. National thresholds are

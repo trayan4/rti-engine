@@ -15,9 +15,10 @@ number as a structured field can quote it; a model that receives a
 paragraph can paraphrase it into something subtly wrong.
 """
 
+from collections.abc import Mapping
 from functools import lru_cache
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 import pandas as pd
 from fastmcp import FastMCP
@@ -51,6 +52,18 @@ Full-time-equivalent base pay and total compensation are the two the
 directive is concerned with. Allowing arbitrary columns would let a caller
 measure actual paid amounts across different working patterns, which
 produces a difference reflecting hours rather than pay.
+"""
+
+Tier = Literal["T0", "T1", "T2"]
+Country = Literal["DE", "FR", "ES"]
+JobFamily = Literal["Sales", "Engineering", "Marketing", "Legal", "Operations"]
+Level = Literal["L1", "L2", "L3", "L4", "L5"]
+Metric = Literal["base_salary_fte_eur", "total_comp_actual_eur"]
+"""Closed value sets, expressed in the tool schema.
+
+A model given a bare string invents plausible values — "Spain" for a
+country code, "Engineering Dept" for a job family. Constraining the schema
+makes those unrepresentable rather than merely refused.
 """
 
 mcp: FastMCP[Any] = FastMCP("rti-analytics")
@@ -93,20 +106,20 @@ def _scoped_rows(
     requester_employee_id: str,
     tier: str,
     kind: ScopeKind,
-    filters: dict[str, str] | None = None,
+    filters: Mapping[str, str] | None = None,
 ) -> pd.DataFrame:
     """Return the rows this requester is permitted to see, and no others."""
     return apply_scope(
         _workforce(),
         Principal(employee_id=requester_employee_id),
         _tier(tier),
-        QueryScope(kind=kind, filters=filters or {}),
+        QueryScope(kind=kind, filters=dict(filters or {})),
         _thresholds(),
     )
 
 
 @mcp.tool()
-def get_own_pay_record(requester_employee_id: str, tier: str) -> dict[str, Any]:
+def get_own_pay_record(requester_employee_id: str, tier: Tier) -> dict[str, Any]:
     """Return the requester's own pay record.
 
     Available from tier T1 upward. The record returned is always the
@@ -138,10 +151,10 @@ def get_own_pay_record(requester_employee_id: str, tier: str) -> dict[str, Any]:
 @mcp.tool()
 def describe_comparator_group(
     requester_employee_id: str,
-    tier: str,
-    country: str,
-    job_family: str,
-    level: str,
+    tier: Tier,
+    country: Country,
+    job_family: JobFamily,
+    level: Level,
 ) -> dict[str, Any]:
     """Describe a category of workers performing work of equal value.
 
@@ -171,11 +184,11 @@ def describe_comparator_group(
 @mcp.tool()
 def compute_pay_gap_statistics(
     requester_employee_id: str,
-    tier: str,
-    country: str,
-    job_family: str,
-    level: str,
-    metric: str = BASE_FTE_COLUMN,
+    tier: Tier,
+    country: Country,
+    job_family: JobFamily,
+    level: Level,
+    metric: Metric = "base_salary_fte_eur",
 ) -> dict[str, Any]:
     """Compute the raw and adjusted pay gap for a category.
 
@@ -213,10 +226,10 @@ def compute_pay_gap_statistics(
 @mcp.tool()
 def check_age_interaction(
     requester_employee_id: str,
-    tier: str,
-    country: str,
-    job_family: str,
-    level: str,
+    tier: Tier,
+    country: Country,
+    job_family: JobFamily,
+    level: Level,
 ) -> dict[str, Any]:
     """Test whether a pay gap is concentrated in one age band.
 
@@ -246,7 +259,7 @@ def check_age_interaction(
 @mcp.tool()
 def optimize_remediation(
     requester_employee_id: str,
-    tier: str,
+    tier: Tier,
     max_individual_raise_pct: float = 15.0,
 ) -> dict[str, Any]:
     """Compute the least-cost salary adjustments closing every unexplained gap.

@@ -1,4 +1,4 @@
-.PHONY: install lint format typecheck test check reqs data
+.PHONY: install lint format typecheck test check reqs data ingest
 
 install:
 	uv sync
@@ -22,3 +22,6 @@ reqs:
 
 data:
 	uv run python -m rti_engine.analytics.generate
+
+ingest:
+	uv run python -m rti_engine.knowledge.vectorstore

@@ -8,13 +8,16 @@ authors = [
 ]
 requires-python = ">=3.13"
 dependencies = [
+    "alembic>=1.18.5",
     "faker>=40.36.0",
     "numpy>=2.5.1",
     "pandas>=3.0.5",
+    "psycopg[binary]>=3.3.4",
     "pulp>=3.3.2",
     "pyarrow>=25.0.0",
     "pydantic-settings>=2.14.2",
     "pyyaml>=6.0.3",
+    "sqlalchemy>=2.0.51",
     "statsmodels>=0.14.6",
 ]
 
@@ -34,6 +37,7 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.ruff]
+extend-exclude = ["migrations"]
 line-length = 100
 target-version = "py313"
 

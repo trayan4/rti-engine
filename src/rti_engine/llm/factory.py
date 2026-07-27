@@ -16,12 +16,14 @@ no value here.
 """
 
 import enum
+from collections.abc import Sequence
 from functools import lru_cache
 
 from langchain_anthropic import ChatAnthropic
 from langchain_core.language_models import BaseChatModel, LanguageModelInput
 from langchain_core.messages import BaseMessage
 from langchain_core.runnables import Runnable
+from langchain_core.tools import BaseTool
 from langchain_groq import ChatGroq
 from langchain_openai import ChatOpenAI, OpenAIEmbeddings
 from pydantic import SecretStr
@@ -110,11 +112,13 @@ def _groq_model(settings: Settings) -> BaseChatModel:
 
 
 @lru_cache
-def get_chat_model(role: ModelRole) -> ChatRunnable:
-    """Return the model for a role, with its fallback chain attached.
+def _role_models(role: ModelRole) -> tuple[BaseChatModel, list[BaseChatModel]]:
+    """Return the primary model for a role and its ordered fallbacks.
 
-    Cached per role: constructing a client opens a connection pool, and one
-    per role per process is enough.
+    Kept separate from fallback assembly so tools can be bound to every
+    model in the chain. Binding after the chain is built would leave the
+    fallbacks without tools, and an agent that fell back would quietly
+    lose its capabilities rather than fail.
     """
     settings = get_settings()
 
@@ -122,21 +126,45 @@ def get_chat_model(role: ModelRole) -> ChatRunnable:
         primary = _azure_model(
             settings, settings.azure_openai_chat_deployment, "AZURE_OPENAI_CHAT_DEPLOYMENT"
         )
-        return primary.with_fallbacks([_anthropic_model(settings), _groq_model(settings)])
+        return primary, [_anthropic_model(settings), _groq_model(settings)]
 
     if role is ModelRole.CLASSIFICATION:
         primary = _azure_model(
             settings, settings.azure_openai_mini_deployment, "AZURE_OPENAI_MINI_DEPLOYMENT"
         )
-        return primary.with_fallbacks([_groq_model(settings)])
+        return primary, [_groq_model(settings)]
 
     # REVIEW: Anthropic first, so the reviewer is a different vendor from the
     # drafter. A reviewer sharing the drafter's family shares its blind spots.
-    primary = _anthropic_model(settings)
     fallback = _azure_model(
         settings, settings.azure_openai_chat_deployment, "AZURE_OPENAI_CHAT_DEPLOYMENT"
     )
-    return primary.with_fallbacks([fallback])
+    return _anthropic_model(settings), [fallback]
+
+
+@lru_cache
+def get_chat_model(role: ModelRole) -> ChatRunnable:
+    """Return the model for a role, with its fallback chain attached.
+
+    Cached per role: constructing a client opens a connection pool, and one
+    per role per process is enough.
+    """
+    primary, fallbacks = _role_models(role)
+    return primary.with_fallbacks(fallbacks)
+
+
+def get_tool_model(role: ModelRole, tools: Sequence[BaseTool]) -> ChatRunnable:
+    """Return a model for a role with tools bound to every model in the chain.
+
+    Not cached: the tool set varies by agent, and a list of tools is not
+    hashable.
+    """
+    bound_tools = list(tools)
+    primary, fallbacks = _role_models(role)
+
+    return primary.bind_tools(bound_tools).with_fallbacks(
+        [model.bind_tools(bound_tools) for model in fallbacks]
+    )
 
 
 @lru_cache

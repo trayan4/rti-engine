@@ -1,7 +1,18 @@
+"""Application configuration, loaded from environment variables or .env.
+
+Every credential defaults to None so the application imports cleanly before
+a given service exists. Code that needs a value asks for it explicitly and
+fails with a clear message if it is missing, rather than failing obscurely
+at call time.
+"""
+
 from functools import lru_cache
 from typing import Literal
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+AZURE_V1_PATH = "openai/v1/"
+"""Path suffix for the Azure OpenAI v1 API, which needs no api-version."""
 
 
 class Settings(BaseSettings):
@@ -27,12 +38,30 @@ class Settings(BaseSettings):
 
     azure_openai_endpoint: str | None = None
     azure_openai_api_key: str | None = None
-    azure_openai_api_version: str | None = None
+    azure_openai_chat_deployment: str | None = None
+    azure_openai_mini_deployment: str | None = None
+    azure_openai_embedding_deployment: str | None = None
+
+    anthropic_api_key: str | None = None
+    anthropic_model: str | None = None
 
     groq_api_key: str | None = None
+    groq_model: str | None = None
 
     langsmith_api_key: str | None = None
     langsmith_project: str = "rti-engine"
+
+    @property
+    def azure_openai_base_url(self) -> str | None:
+        """The v1 API base URL, derived from the configured endpoint.
+
+        The endpoint is stored as the bare resource URL; the v1 path is
+        appended here so the API surface stays an implementation detail
+        rather than something someone must remember to type into .env.
+        """
+        if not self.azure_openai_endpoint:
+            return None
+        return self.azure_openai_endpoint.rstrip("/") + "/" + AZURE_V1_PATH
 
 
 @lru_cache

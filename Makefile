@@ -1,4 +1,4 @@
-.PHONY: install lint format typecheck test check reqs data ingest
+.PHONY: install lint format typecheck test check reqs data ingest graph
 
 install:
 	uv sync
@@ -25,3 +25,6 @@ data:
 
 ingest:
 	uv run python -m rti_engine.knowledge.vectorstore
+
+graph:
+	uv run python -m rti_engine.knowledge.graph_ingest

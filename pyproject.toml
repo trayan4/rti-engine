@@ -17,6 +17,7 @@ dependencies = [
     "langchain-openai>=1.4.1",
     "langchain-pinecone>=0.2.13",
     "lxml>=6.1.1",
+    "neo4j>=6.2.0",
     "numpy>=2.5.1",
     "pandas>=3.0.5",
     "psycopg[binary]>=3.3.4",

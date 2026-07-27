@@ -132,10 +132,15 @@ async def test_a_group_below_the_minimum_size_is_refused() -> None:
 
 
 async def test_only_permitted_metrics_may_be_measured() -> None:
-    """Actual paid amounts across working patterns measure hours, not pay."""
+    """Actual paid amounts across working patterns measure hours, not pay.
+
+    Rejected at schema validation rather than in the function body: the
+    tool's type makes the value unrepresentable, so the runtime check
+    behind it never has to fire.
+    """
     assert "base_salary_actual_eur" not in PERMITTED_METRICS
 
-    with pytest.raises(ToolError, match="unknown metric"):
+    with pytest.raises(ToolError, match="Input should be"):
         await call_tool(
             "compute_pay_gap_statistics",
             {
@@ -148,7 +153,7 @@ async def test_only_permitted_metrics_may_be_measured() -> None:
 
 
 async def test_an_unknown_tier_is_refused() -> None:
-    with pytest.raises(ToolError, match="unknown tier"):
+    with pytest.raises(ToolError, match="Input should be"):
         await call_tool("get_own_pay_record", {"requester_employee_id": REQUESTER, "tier": "T9"})
 
 

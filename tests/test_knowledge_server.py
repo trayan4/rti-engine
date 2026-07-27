@@ -136,7 +136,7 @@ async def test_every_passage_carries_a_citation() -> None:
 
 async def test_an_unknown_jurisdiction_is_refused() -> None:
     """Refused, not empty: an empty result reads as "no such law exists"."""
-    with pytest.raises(ToolError, match="unknown jurisdiction"):
+    with pytest.raises(ToolError, match="Input should be"):
         await call_tool("get_jurisdiction_status", {"jurisdiction": "XX"})
 
 
@@ -154,8 +154,12 @@ async def test_an_empty_query_is_refused() -> None:
         await call_tool("search_regulatory_knowledge", {"query": "   ", "jurisdiction": "DE"})
 
 
-@needs_graph
-async def test_lowercase_country_codes_are_accepted() -> None:
-    """Normalised rather than refused: casing is not a meaningful distinction."""
-    data = await call_tool("get_jurisdiction_status", {"jurisdiction": "es"})
-    assert data["jurisdiction"] == "ES"
+async def test_the_schema_admits_only_exact_country_codes() -> None:
+    """Casing is no longer normalised at the tool surface.
+
+    The schema enumerates the permitted codes, so a model is shown exactly
+    what to send and cannot send anything else. Accepting variants would
+    widen the contract for no benefit, since the caller is never guessing.
+    """
+    with pytest.raises(ToolError, match="Input should be"):
+        await call_tool("get_jurisdiction_status", {"jurisdiction": "es"})

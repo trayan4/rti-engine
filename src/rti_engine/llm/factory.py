@@ -18,6 +18,7 @@ no value here.
 import enum
 from collections.abc import Sequence
 from functools import lru_cache
+from typing import Any
 
 from langchain_anthropic import ChatAnthropic
 from langchain_core.language_models import BaseChatModel, LanguageModelInput
@@ -26,7 +27,7 @@ from langchain_core.runnables import Runnable
 from langchain_core.tools import BaseTool
 from langchain_groq import ChatGroq
 from langchain_openai import ChatOpenAI, OpenAIEmbeddings
-from pydantic import SecretStr
+from pydantic import BaseModel, SecretStr
 
 from rti_engine.config.settings import Settings, get_settings
 
@@ -151,6 +152,21 @@ def get_chat_model(role: ModelRole) -> ChatRunnable:
     """
     primary, fallbacks = _role_models(role)
     return primary.with_fallbacks(fallbacks)
+
+
+def get_structured_model(role: ModelRole, schema: type[BaseModel]) -> Runnable[Any, Any]:
+    """Return a model for a role that emits an instance of a schema.
+
+    Structured output is applied to every model in the chain before the
+    chain is assembled, for the same reason tools are: the fallback
+    wrapper has no such method, and a fallback returning free text where
+    the caller expects a parsed object fails downstream rather than here.
+    """
+    primary, fallbacks = _role_models(role)
+
+    return primary.with_structured_output(schema).with_fallbacks(
+        [model.with_structured_output(schema) for model in fallbacks]
+    )
 
 
 def get_tool_model(role: ModelRole, tools: Sequence[BaseTool]) -> ChatRunnable:

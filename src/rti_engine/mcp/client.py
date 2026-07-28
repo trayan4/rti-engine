@@ -12,14 +12,20 @@ agent invocation.
 
 import copy
 import sys
+from collections.abc import AsyncGenerator, Sequence
+from contextlib import AsyncExitStack, asynccontextmanager
 from typing import Any
 
 from langchain_core.tools import BaseTool, StructuredTool
 from langchain_mcp_adapters.client import MultiServerMCPClient
 from langchain_mcp_adapters.sessions import Connection, StdioConnection
+from langchain_mcp_adapters.tools import load_mcp_tools
 
 ANALYTICS_SERVER = "rti_engine.mcp.analytics_server"
 KNOWLEDGE_SERVER = "rti_engine.mcp.knowledge_server"
+
+ANALYTICS = "analytics"
+KNOWLEDGE = "knowledge"
 
 IDENTITY_FIELDS: tuple[str, ...] = ("requester_employee_id", "tier")
 """Arguments the application supplies, never the agent.
@@ -151,3 +157,59 @@ async def load_tools_for(employee_id: str, tier: str) -> list[BaseTool]:
     tests and for tools that carry no identity.
     """
     return [bind_principal(tool, employee_id, tier) for tool in await load_tools()]
+
+
+def _unwrap_exception_group(error: BaseException) -> BaseException:
+    """Return the single underlying exception from nested exception groups.
+
+    The MCP stdio client runs its streams in an anyio task group, which
+    repacks anything raised in the caller's body into a
+    BaseExceptionGroup on the way out. A caller writing
+    ``except AnalysisError`` would therefore never catch its own error.
+
+    Groups holding more than one exception are left alone: there is no
+    single cause to surface, and collapsing them would hide failures.
+    """
+    while isinstance(error, BaseExceptionGroup) and len(error.exceptions) == 1:
+        error = error.exceptions[0]
+    return error
+
+
+@asynccontextmanager
+async def tool_session(
+    employee_id: str, tier: str, servers: Sequence[str] | None = None
+) -> AsyncGenerator[dict[str, BaseTool]]:
+    """Open one session per server and yield tools bound to a requester.
+
+    Tools loaded outside a session open a fresh connection per call, which
+    over stdio means spawning both server subprocesses, completing an MCP
+    handshake and tearing them down again — roughly two seconds of process
+    overhead for a call that takes milliseconds.
+
+    Here the servers start once and stay up for the caller's whole unit of
+    work. An analysis making five calls pays the cost once rather than
+    five times, and the saving grows with the number of calls an agent
+    makes.
+
+    Tools are keyed by name, since callers select them rather than
+    iterating.
+
+    Callers that need one server should say so. Each server is a separate
+    Python process importing its own heavy dependencies, so opening one
+    that will not be used costs seconds for nothing.
+    """
+    client = get_mcp_client()
+
+    try:
+        async with AsyncExitStack() as stack:
+            loaded: list[BaseTool] = []
+            for server in servers if servers is not None else server_connections():
+                session = await stack.enter_async_context(client.session(server))
+                loaded.extend(await load_mcp_tools(session))
+
+            yield {tool.name: bind_principal(tool, employee_id, tier) for tool in loaded}
+    except BaseExceptionGroup as group:
+        unwrapped = _unwrap_exception_group(group)
+        if unwrapped is group:
+            raise
+        raise unwrapped from None

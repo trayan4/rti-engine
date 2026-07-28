@@ -15,16 +15,12 @@ without its qualifying condition, which is worse than not retrieving it.
 """
 
 import re
-from functools import lru_cache
 from pathlib import Path
 
-import tiktoken
 from pydantic import BaseModel, ConfigDict
 
 from rti_engine.knowledge.directive import CELEX_ID, Section, parse_directive
-
-ENCODING_NAME = "cl100k_base"
-"""Tokeniser used by the text-embedding-3 family."""
+from rti_engine.llm.tokens import count_tokens, get_encoding
 
 MAX_CHUNK_TOKENS = 500
 """Upper bound per chunk. Comfortably inside the model's limit, and small
@@ -58,17 +54,6 @@ class Chunk(BaseModel):
         return f"{self.document_id}:{self.section_type}:{self.section_number}:{self.chunk_index}"
 
 
-@lru_cache
-def _encoding() -> tiktoken.Encoding:
-    """Return the tokeniser, loaded once per process."""
-    return tiktoken.get_encoding(ENCODING_NAME)
-
-
-def count_tokens(text: str) -> int:
-    """Count tokens the way the embedding model will."""
-    return len(_encoding().encode(text))
-
-
 def _split_paragraphs(text: str) -> list[str]:
     """Split a section into paragraphs, discarding blank lines."""
     return [line.strip() for line in text.split("\n") if line.strip()]
@@ -95,7 +80,7 @@ def _split_oversized(paragraph: str, max_tokens: int) -> list[str]:
     if buffer:
         pieces.append(" ".join(buffer))
 
-    encoding = _encoding()
+    encoding = get_encoding()
     bounded: list[str] = []
     for piece in pieces:
         tokens = encoding.encode(piece)

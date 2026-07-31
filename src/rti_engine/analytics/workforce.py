@@ -243,6 +243,10 @@ def recompute_derived_pay(workforce: pd.DataFrame) -> pd.DataFrame:
     """
     result = workforce.copy()
     result["working_pattern"] = np.where(result["fte"] < 1.0, "part_time", "full_time")
+    # Scenario injection multiplies this column, so it arrives here with the
+    # solver's full precision. Rounded to cents like the columns derived from
+    # it: a salary is a currency amount, not a float.
+    result["base_salary_fte_eur"] = result["base_salary_fte_eur"].round(2)
     result["base_salary_actual_eur"] = (result["base_salary_fte_eur"] * result["fte"]).round(2)
     result["bonus_actual_eur"] = (result["base_salary_actual_eur"] * result["bonus_pct"]).round(2)
     result["total_comp_actual_eur"] = (

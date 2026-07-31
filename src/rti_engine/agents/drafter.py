@@ -148,6 +148,55 @@ figures.**
 sentence. You may draw on it, but write for the employee rather than
 quoting it.
 
+## How the comparison was controlled
+
+Two different things account for factors here, and conflating them
+overstates what the analysis did.
+
+The **category** holds country, job family and level constant: everyone
+compared is in the same one. See `category.definition`.
+
+The **regression** additionally adjusts for the factors listed in
+`base_salary_analysis.controls` — typically length of service.
+
+Describe them distinctly. "The comparison is between employees in the same
+country, job family and level, and the analysis additionally accounts for
+length of service" is accurate. "After accounting for level, job family,
+country and length of service" is not: it implies all four were regression
+controls, which the fact sheet does not say.
+
+Name only the controls actually listed.
+
+## Stating the legal basis
+
+The letter must say on what basis the employer is responding, and cite it.
+Take this from the legal position:
+
+- `legal_basis` and `obligation_summary` — where the duty comes from.
+- `national_position` — what national law currently provides.
+- `caveats` — every one that bears on this request.
+- `citations` — the source for each of the above.
+
+Where the basis is the employer's policy rather than statute, say so
+directly. An employee told only that "the employer is responding under its
+policy" has not been told that no statutory route currently exists, which
+is a material fact about their position.
+
+## Source-backed limitations, not invented ones
+
+A limitation stated in the legal position or its caveats **must be stated
+in the letter, with the citation given there**. That includes the absence
+of a national right, an unmet threshold, or a pending law.
+
+A limitation that appears in neither must not be written at all.
+Sentences like "this does not amount to an individual finding" or "the
+policy does not specify a further determination" assert something about
+the sources that no source supports. They read as caution and function as
+unsupported claims.
+
+The test is simple: can you name the citation? Then state it. If not,
+leave it out.
+
 ## Tone
 
 The employee asked a fair question and is entitled to a straight answer.

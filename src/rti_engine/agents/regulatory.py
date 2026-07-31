@@ -288,5 +288,10 @@ async def establish_position(
     if not isinstance(position, RegulatoryPosition):
         raise RegulatoryError("regulatory model did not return a position")
 
-    check_transposition_agrees(position, status, jurisdiction)
-    return position
+    # The jurisdiction was supplied by the caller and is not the model's to
+    # decide. Left as returned it arrives as "France" or "Spain", which the
+    # tool schemas reject downstream — and a wrong country here would send
+    # the whole response to the wrong body of law.
+    checked = position.model_copy(update={"jurisdiction": jurisdiction})
+    check_transposition_agrees(checked, status, jurisdiction)
+    return checked

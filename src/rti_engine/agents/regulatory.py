@@ -26,14 +26,13 @@ from rti_engine.agents.prompts import (
     TOOL_FAILURE_RULES,
     Prompt,
 )
+from rti_engine.agents.tools import ToolCallError, call_tool, result_text
 from rti_engine.llm.factory import ModelRole, get_structured_model
 from rti_engine.mcp.client import KNOWLEDGE, tool_session
 
 RIGHT_TO_INFORMATION_ARTICLE = 7
 REPORTING_ARTICLE = 9
 JOINT_ASSESSMENT_ARTICLE = 10
-
-TOOL_ERROR_PREFIX = "Error calling tool"
 
 LegalBasis = Literal[
     "national_law",
@@ -176,27 +175,16 @@ it as the basis for a duty that does not exist.
 )
 
 
-def _result_text(result: Any) -> str:
-    """Extract the payload from an MCP tool result."""
-    if isinstance(result, list) and result and isinstance(result[0], dict):
-        return str(result[0].get("text", ""))
-    return str(result)
+_result_text = result_text
+"""Kept as a module-level name so existing callers and tests are unaffected."""
 
 
 async def _call(tools: dict[str, BaseTool], name: str, **arguments: Any) -> Any:
-    """Call one tool, refusing an error payload rather than passing it on."""
-    tool = tools.get(name)
-    if tool is None:
-        raise RegulatoryError(f"tool {name!r} is not available")
-
-    text = _result_text(await tool.ainvoke(arguments))
-    if text.startswith(TOOL_ERROR_PREFIX):
-        raise RegulatoryError(text)
-
+    """Call one tool, raising this module's error type on any failure."""
     try:
-        return json.loads(text)
-    except json.JSONDecodeError as error:
-        raise RegulatoryError(f"{name} returned unparseable output: {text[:200]}") from error
+        return await call_tool(tools, name, **arguments)
+    except ToolCallError as error:
+        raise RegulatoryError(str(error)) from error
 
 
 def _format_passages(passages: list[dict[str, Any]]) -> str:

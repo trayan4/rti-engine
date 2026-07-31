@@ -13,19 +13,17 @@ Every figure here is quoted from a tool result, unchanged. Nothing in
 this module computes.
 """
 
-import json
 from typing import Any
 
 from langchain_core.tools import BaseTool
 from pydantic import BaseModel, ConfigDict
 
+from rti_engine.agents.tools import ToolCallError, call_tool, result_text
 from rti_engine.db.models import AutonomyTier
 from rti_engine.mcp.client import ANALYTICS, tool_session
 
 BASE_METRIC = "base_salary_fte_eur"
 TOTAL_COMP_METRIC = "total_comp_actual_eur"
-
-TOOL_ERROR_PREFIX = "Error calling tool"
 
 
 class AnalysisError(RuntimeError):
@@ -102,31 +100,20 @@ class GroupAnalysis(BaseModel):
     tools_called: list[str]
 
 
-def _result_text(result: Any) -> str:
-    """Extract the payload from an MCP tool result.
-
-    Results arrive as content blocks, and errors arrive the same way
-    rather than as exceptions.
-    """
-    if isinstance(result, list) and result and isinstance(result[0], dict):
-        return str(result[0].get("text", ""))
-    return str(result)
+_result_text = result_text
+"""Kept as a module-level name so existing callers and tests are unaffected."""
 
 
 async def _call(tools: dict[str, BaseTool], name: str, **arguments: Any) -> dict[str, Any]:
-    """Call one tool and return its parsed result, refusing an error payload."""
-    tool = tools.get(name)
-    if tool is None:
-        raise AnalysisError(f"tool {name!r} is not available")
+    """Call one tool, raising this module's error type on any failure.
 
-    text = _result_text(await tool.ainvoke(arguments))
-    if text.startswith(TOOL_ERROR_PREFIX):
-        raise AnalysisError(text)
-
+    The shared helper does the parsing and refusal handling; this narrows
+    the exception so callers of the protocol catch one error type.
+    """
     try:
-        parsed = json.loads(text)
-    except json.JSONDecodeError as error:
-        raise AnalysisError(f"{name} returned unparseable output: {text[:200]}") from error
+        parsed = await call_tool(tools, name, **arguments)
+    except ToolCallError as error:
+        raise AnalysisError(str(error)) from error
 
     if not isinstance(parsed, dict):
         raise AnalysisError(f"{name} returned {type(parsed).__name__}, expected an object")

@@ -91,7 +91,13 @@ DRAFTER_PROMPT = Prompt(
     name="response_letter",
     version=1,
     description="Write the response letter to an employee's pay-information request.",
-    inputs=("request_text", "facts", "legal_position", "pay_setting_criteria"),
+    inputs=(
+        "request_text",
+        "facts",
+        "legal_position",
+        "pay_setting_criteria",
+        "revision_feedback",
+    ),
     max_tokens=10000,
     template=f"""\
 You write an employer's written response to an employee who has asked for
@@ -221,7 +227,11 @@ available.
 State these in the letter, in your own words, with their citation. They
 are the employer's own published criteria.
 
-{{pay_setting_criteria}}""",
+{{pay_setting_criteria}}
+
+## Revision
+
+{{revision_feedback}}""",
 )
 
 
@@ -353,11 +363,23 @@ def build_legal_position(position: RegulatoryPosition) -> dict[str, Any]:
 
 
 def _flatten(prefix: str, value: Any, into: dict[str, Any]) -> None:
-    """Collect leaf fields under dotted names, for source-field checking."""
+    """Collect leaf fields under dotted names, for source-field checking.
+
+    List entries are recorded both bare and indexed, so a model citing
+    ``caveats`` and one citing ``caveats[1]`` are both being precise
+    enough to check.
+    """
     if isinstance(value, dict):
         for key, nested in value.items():
             _flatten(f"{prefix}.{key}" if prefix else str(key), nested, into)
         return
+
+    if isinstance(value, list):
+        into[prefix] = value
+        for index, item in enumerate(value):
+            _flatten(f"{prefix}[{index}]", item, into)
+        return
+
     into[prefix] = value
 
 
@@ -376,14 +398,35 @@ def fact_sheet_fields(facts: dict[str, Any]) -> set[str]:
     return names
 
 
-def check_declared_sources(letter: DraftLetter, facts: dict[str, Any]) -> list[str]:
-    """Return the declared source fields that do not exist in the fact sheet.
+def permitted_source_fields(
+    facts: dict[str, Any], legal_position: dict[str, Any] | None = None
+) -> set[str]:
+    """Every field a figure may be attributed to.
+
+    The legal position is a source too. The drafter is required to state
+    the legal basis and cite it, so a threshold or a headcount quoted from
+    a national provision is properly sourced — it simply is not in the
+    fact sheet, and checking against the fact sheet alone rejected a
+    correct citation.
+    """
+    names = fact_sheet_fields(facts)
+    if legal_position is not None:
+        names.update(fact_sheet_fields({"legal_position": legal_position}))
+    return names
+
+
+def check_declared_sources(
+    letter: DraftLetter,
+    facts: dict[str, Any],
+    legal_position: dict[str, Any] | None = None,
+) -> list[str]:
+    """Return the declared source fields that exist in neither source.
 
     A cheap check on the model's own declaration. It does not verify that
     the letter's prose matches — that is the validator's job, and it works
     on the text rather than on what the model says about the text.
     """
-    permitted = fact_sheet_fields(facts)
+    permitted = permitted_source_fields(facts, legal_position)
     return [
         figure.source_field
         for figure in letter.figures_used
@@ -433,11 +476,15 @@ async def fetch_pay_setting_criteria(employee_id: str, tier: str, jurisdiction: 
     )
 
 
+NO_REVISION = "This is the first draft. There is no prior review to address."
+
+
 async def draft_response(
     request_text: str,
     analysis: GroupAnalysis,
     position: RegulatoryPosition,
     pay_setting_criteria: str | None = None,
+    revision_feedback: str | None = None,
 ) -> DraftLetter:
     """Draft the response to one request.
 
@@ -456,11 +503,13 @@ async def draft_response(
     )
 
     facts = build_fact_sheet(analysis)
+    legal = build_legal_position(position)
     rendered = DRAFTER_PROMPT.render(
         request_text=request_text,
         facts=json.dumps(facts, indent=2),
-        legal_position=json.dumps(build_legal_position(position), indent=2),
+        legal_position=json.dumps(legal, indent=2),
         pay_setting_criteria=criteria,
+        revision_feedback=revision_feedback or NO_REVISION,
     )
 
     model = get_structured_model(ModelRole.REASONING, DraftLetter)
@@ -469,9 +518,7 @@ async def draft_response(
     if not isinstance(letter, DraftLetter):
         raise DraftingError("drafting model did not return a letter")
 
-    if unknown := check_declared_sources(letter, facts):
-        raise DraftingError(
-            f"letter cites fact-sheet fields that do not exist: {', '.join(unknown)}"
-        )
+    if unknown := check_declared_sources(letter, facts, legal):
+        raise DraftingError(f"letter cites source fields that do not exist: {', '.join(unknown)}")
 
     return letter

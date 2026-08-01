@@ -21,6 +21,7 @@ from langgraph.graph import END, START, StateGraph
 from langgraph.graph.state import CompiledStateGraph
 
 from rti_engine.agents.intake import classify_request
+from rti_engine.agents.responder import answer_informational, answer_own_data
 from rti_engine.agents.state import Actor, RequestState, audited, failed
 from rti_engine.db.models import AutonomyTier, RequestStatus
 
@@ -80,18 +81,58 @@ def route_by_tier(state: RequestState) -> str:
 
 
 async def respond_informational_node(state: RequestState) -> dict[str, Any]:
-    """Handle a Tier 0 request. Placeholder."""
+    """Answer a Tier 0 request from the corpus alone.
+
+    Completes without human approval: no employee data is involved, and
+    the tier makes none reachable.
+    """
+    try:
+        letter = await answer_informational(
+            state["requester_employee_id"],
+            state["request_text"],
+            state["jurisdiction"],
+        )
+    except Exception as error:
+        return failed(Actor.SUPERVISOR, "informational_response_failed", error)
+
     return {
-        "status": RequestStatus.IN_PROGRESS,
-        **audited(Actor.SUPERVISOR, "routed", path=RESPOND_INFORMATIONAL),
+        "draft": letter,
+        "status": RequestStatus.COMPLETED,
+        **audited(
+            Actor.SUPERVISOR,
+            "response_written",
+            path=RESPOND_INFORMATIONAL,
+            sections=len(letter.sections),
+            citations=len(letter.citations),
+        ),
     }
 
 
 async def respond_own_data_node(state: RequestState) -> dict[str, Any]:
-    """Handle a Tier 1 request. Placeholder."""
+    """Answer a Tier 1 request from the requester's own record.
+
+    Also completes without approval: the requester is being shown their
+    own data, and the authorization layer permits nothing else.
+    """
+    try:
+        letter = await answer_own_data(
+            state["requester_employee_id"],
+            state["request_text"],
+            state["jurisdiction"],
+        )
+    except Exception as error:
+        return failed(Actor.SUPERVISOR, "own_data_response_failed", error)
+
     return {
-        "status": RequestStatus.IN_PROGRESS,
-        **audited(Actor.SUPERVISOR, "routed", path=RESPOND_OWN_DATA),
+        "draft": letter,
+        "status": RequestStatus.COMPLETED,
+        **audited(
+            Actor.SUPERVISOR,
+            "response_written",
+            path=RESPOND_OWN_DATA,
+            sections=len(letter.sections),
+            figures=len(letter.figures_used),
+        ),
     }
 
 

@@ -155,3 +155,16 @@ def failed(actor: Actor, action: str, error: Exception) -> dict[str, Any]:
         ],
         "status": RequestStatus.FAILED,
     }
+
+
+def current_tier(state: RequestState) -> AutonomyTier | None:
+    """Return the tier as an enum, whatever form it is stored in.
+
+    ``AutonomyTier`` is a string enum, so msgpack stores it as a plain
+    string and returns one. Comparisons and dictionary lookups still work,
+    because a string enum equals its own value — but ``.value`` does not,
+    and a resumed request would fail there rather than where the type was
+    lost.
+    """
+    tier = state.get("tier")
+    return AutonomyTier(tier) if tier is not None else None

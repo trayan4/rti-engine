@@ -277,3 +277,34 @@ def review_report(result: ReviewResult) -> dict[str, Any]:
             for finding in result.findings
         ],
     }
+
+
+def revision_feedback(review: ReviewResult) -> str:
+    """Render blocking findings as instructions for a redraft.
+
+    Only blocking findings are sent back. Advisory ones are recorded for
+    the human reviewer but are not worth another model call, and a long
+    list of minor notes crowds out the defects that actually matter.
+    """
+    if not review.blocking:
+        return "The previous draft raised no blocking findings."
+
+    parts = [
+        "A reviewer found the following defects in your previous draft. "
+        "Rewrite the letter to address every one of them. Change nothing "
+        "else: the rest of the draft was accepted.",
+        "",
+    ]
+
+    for index, finding in enumerate(review.blocking, start=1):
+        parts.extend(
+            [
+                f"{index}. [{finding.kind}]",
+                f"   You wrote: {finding.quote}",
+                f"   Problem:   {finding.problem}",
+                f"   Instead:   {finding.suggested_fix}",
+                "",
+            ]
+        )
+
+    return "\n".join(parts)

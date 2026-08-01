@@ -83,6 +83,9 @@ class RequestState(TypedDict, total=False):
     review: ReviewResult | None
 
     revision_count: int
+    pay_setting_criteria: str | None
+    """Retrieved once and reused across revisions rather than re-fetched."""
+
     approved_by: str | None
     """Set when a human approves a Tier 2 response. Never set by an agent."""
 
@@ -110,6 +113,7 @@ def initial_state(
         draft=None,
         review=None,
         revision_count=0,
+        pay_setting_criteria=None,
         approved_by=None,
         status=RequestStatus.RECEIVED,
         audit=[

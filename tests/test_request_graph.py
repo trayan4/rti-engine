@@ -16,13 +16,19 @@ import pytest
 from langgraph.graph import END
 
 from rti_engine.agents.graph import (
-    DISCLOSURE_PIPELINE,
+    ANALYST,
+    DRAFTER,
+    REGULATORY,
     RESPOND_INFORMATIONAL,
     RESPOND_OWN_DATA,
     TIER_NODES,
+    _continue_unless_failed,
     build_graph,
+    needs_revision,
+    route_after_review,
     route_by_tier,
 )
+from rti_engine.agents.reviewer import Finding, ReviewResult
 from rti_engine.agents.state import (
     MAX_REVISIONS,
     Actor,
@@ -70,7 +76,7 @@ def test_receipt_is_recorded_before_anything_runs() -> None:
     [
         (AutonomyTier.T0, RESPOND_INFORMATIONAL),
         (AutonomyTier.T1, RESPOND_OWN_DATA),
-        (AutonomyTier.T2, DISCLOSURE_PIPELINE),
+        (AutonomyTier.T2, ANALYST),
     ],
 )
 def test_each_tier_takes_its_own_path(tier: AutonomyTier, expected: str) -> None:
@@ -139,7 +145,7 @@ async def test_the_graph_compiles_with_every_node() -> None:
         "intake",
         RESPOND_INFORMATIONAL,
         RESPOND_OWN_DATA,
-        DISCLOSURE_PIPELINE,
+        ANALYST,
     } <= nodes
 
 
@@ -150,3 +156,67 @@ async def test_a_failed_intake_reaches_no_tier_path() -> None:
 
     routed = [entry for entry in final["audit"] if entry.action == "routed"]
     assert routed == []
+
+
+# --- the tier 2 pipeline ---
+
+
+def review(approved: bool = False, blocking: int = 0) -> ReviewResult:
+    """A review result with the given approval and blocking-finding count."""
+    findings = [
+        Finding(
+            kind="ungrounded_figure",
+            severity="blocking",
+            quote=f"figure {index}",
+            problem="not in the fact sheet",
+            suggested_fix="remove it",
+        )
+        for index in range(blocking)
+    ]
+    return ReviewResult(approved=approved, findings=findings, summary="s")
+
+
+def test_an_approved_draft_is_not_sent_back() -> None:
+    assert needs_revision(state(revision_count=0), review(approved=True)) is False
+
+
+def test_a_blocked_draft_is_sent_back() -> None:
+    assert needs_revision(state(revision_count=0), review(blocking=2)) is True
+
+
+def test_revisions_stop_at_the_limit() -> None:
+    """Two models that cannot agree must stop rather than argue."""
+    assert needs_revision(state(revision_count=MAX_REVISIONS), review(blocking=2)) is False
+
+
+def test_a_tier_two_request_never_completes_on_its_own() -> None:
+    """Approved or not, it ends awaiting a human decision."""
+    for result in (review(approved=True), review(blocking=1)):
+        assert route_after_review(state(revision_count=MAX_REVISIONS, review=result)) == END
+
+
+def test_an_exhausted_draft_still_reaches_a_human() -> None:
+    """A draft the reviewer will not approve goes forward with its findings."""
+    routed = route_after_review(state(revision_count=MAX_REVISIONS, review=review(blocking=3)))
+    assert routed == END
+
+
+def test_a_blocked_draft_within_the_limit_returns_to_the_drafter() -> None:
+    assert route_after_review(state(revision_count=0, review=review(blocking=1))) == DRAFTER
+
+
+def test_a_failed_run_does_not_revise() -> None:
+    failing = state(revision_count=0, review=review(blocking=1), errors=["boom"])
+    assert route_after_review(failing) == END
+
+
+def test_a_missing_review_ends_rather_than_looping() -> None:
+    assert route_after_review(state(revision_count=0, review=None)) == END
+
+
+def test_the_pipeline_stops_where_a_node_failed() -> None:
+    """Each stage depends on the last; continuing past a failure is worse."""
+    route = _continue_unless_failed(REGULATORY)
+
+    assert route(state()) == REGULATORY
+    assert route(state(errors=["analysis failed"])) == END

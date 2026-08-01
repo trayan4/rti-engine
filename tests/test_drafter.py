@@ -204,6 +204,7 @@ def test_the_prompt_renders_within_its_budget() -> None:
         "facts": "{}",
         "legal_position": "{}",
         "pay_setting_criteria": "[policy]\nPay is set by level and country.",
+        "revision_feedback": "This is the first draft.",
     }
 
     assert DRAFTER_PROMPT.fits(**values)

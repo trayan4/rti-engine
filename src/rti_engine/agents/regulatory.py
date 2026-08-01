@@ -26,7 +26,12 @@ from rti_engine.agents.prompts import (
     TOOL_FAILURE_RULES,
     Prompt,
 )
-from rti_engine.agents.tools import ToolCallError, call_tool, result_text
+from rti_engine.agents.tools import (
+    ToolCallError,
+    call_tool,
+    format_passages,
+    result_text,
+)
 from rti_engine.llm.factory import ModelRole, get_structured_model
 from rti_engine.mcp.client import KNOWLEDGE, tool_session
 
@@ -187,18 +192,8 @@ async def _call(tools: dict[str, BaseTool], name: str, **arguments: Any) -> Any:
         raise RegulatoryError(str(error)) from error
 
 
-def _format_passages(passages: list[dict[str, Any]]) -> str:
-    """Render retrieved passages with their citations attached.
-
-    The citation precedes the text so the model reads the attribution as
-    part of the passage rather than as metadata it may drop.
-    """
-    if not passages:
-        return "No relevant passages were retrieved."
-
-    return "\n\n".join(
-        f"[{item.get('citation', 'uncited')}]\n{item.get('text', '')}" for item in passages
-    )
+_format_passages = format_passages
+"""Kept as a module-level name so existing tests are unaffected."""
 
 
 def _format_graph(status: Any, provisions: Any, gaps: Any, policy: Any) -> str:

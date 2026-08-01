@@ -50,3 +50,21 @@ async def call_tool(tools: dict[str, BaseTool], name: str, **arguments: Any) -> 
         return json.loads(text)
     except json.JSONDecodeError as error:
         raise ToolCallError(f"{name} returned unparseable output: {text[:200]}") from error
+
+
+def format_passages(passages: list[dict[str, Any]]) -> str:
+    """Render retrieved passages with their citations attached.
+
+    The citation precedes the text so a model reads the attribution as
+    part of the passage rather than as metadata it may drop.
+
+    An empty result says so explicitly: silence would read as "the sources
+    are silent on this", which is a much stronger claim than "nothing was
+    retrieved".
+    """
+    if not passages:
+        return "No relevant passages were retrieved."
+
+    return "\n\n".join(
+        f"[{item.get('citation', 'uncited')}]\n{item.get('text', '')}" for item in passages
+    )

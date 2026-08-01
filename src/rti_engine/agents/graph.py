@@ -39,6 +39,7 @@ from rti_engine.agents.state import (
     failed,
 )
 from rti_engine.db.models import AutonomyTier, RequestStatus
+from rti_engine.observability.tracing import enable_tracing
 
 TierNode = Literal["respond_informational", "respond_own_data", "analyst"]
 
@@ -334,6 +335,10 @@ def build_graph(checkpointer: Any = None) -> CompiledStateGraph[Any, Any, Any]:
     The checkpointer is optional so the graph can be exercised without a
     database. Persistence is wired in at the step that needs it.
     """
+    # Exported before any chain runs: the tracer reads os.environ, and a
+    # chain built before this sees tracing as off.
+    enable_tracing()
+
     builder: StateGraph[RequestState, Any, Any, Any] = StateGraph(RequestState)
 
     builder.add_node(INTAKE, intake_node)

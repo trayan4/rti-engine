@@ -70,7 +70,10 @@ mypy_path = "src"
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
-filterwarnings = ['ignore:.*PuLP 4\.0.*:DeprecationWarning']
+filterwarnings = [
+    'ignore:.*PuLP 4\.0.*:DeprecationWarning',
+    'ignore:.*starlette\.testclient.*:DeprecationWarning',
+]
 
 [[tool.mypy.overrides]]
 module = ["statsmodels.*", "patsy.*", "formulaic.*", "pulp.*"]

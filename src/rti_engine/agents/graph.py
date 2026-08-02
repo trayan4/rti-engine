@@ -28,6 +28,7 @@ from langgraph.types import interrupt
 from pydantic import BaseModel, ConfigDict, Field
 
 from rti_engine.agents.analyst import analyse_requester_group
+from rti_engine.agents.budget import degraded_detail, degraded_letter, over_budget
 from rti_engine.agents.drafter import draft_response, fetch_pay_setting_criteria
 from rti_engine.agents.intake import classify_request
 from rti_engine.agents.regulatory import establish_position
@@ -61,6 +62,7 @@ REGULATORY = "regulatory"
 DRAFTER = "drafter"
 REVIEWER = "reviewer"
 APPROVAL = "approval"
+DEGRADED = "degraded"
 
 
 class HumanDecision(BaseModel):
@@ -108,6 +110,8 @@ async def intake_node(state: RequestState) -> dict[str, Any]:
         "tier": result.tier,
         "intake": result,
         "status": RequestStatus.IN_PROGRESS,
+        "tokens_used": result.tokens_used,
+        "cost_usd": result.cost_usd,
         **audited(
             Actor.INTAKE,
             "tier_assigned",
@@ -130,7 +134,7 @@ def route_by_tier(state: RequestState) -> str:
     a disclosure level for a request nobody classified.
     """
     if state.get("errors"):
-        return END
+        return DEGRADED
 
     tier = state.get("tier")
     if tier is None:
@@ -160,6 +164,8 @@ async def respond_informational_node(state: RequestState) -> dict[str, Any]:
     return {
         "draft": letter,
         "status": RequestStatus.COMPLETED,
+        "tokens_used": recorder.total_tokens,
+        "cost_usd": recorder.cost_usd,
         **audited(
             Actor.SUPERVISOR,
             "response_written",
@@ -192,6 +198,8 @@ async def respond_own_data_node(state: RequestState) -> dict[str, Any]:
     return {
         "draft": letter,
         "status": RequestStatus.COMPLETED,
+        "tokens_used": recorder.total_tokens,
+        "cost_usd": recorder.cost_usd,
         **audited(
             Actor.SUPERVISOR,
             "response_written",
@@ -243,6 +251,8 @@ async def regulatory_node(state: RequestState) -> dict[str, Any]:
 
     return {
         "position": position,
+        "tokens_used": recorder.total_tokens,
+        "cost_usd": recorder.cost_usd,
         **audited(
             Actor.REGULATORY,
             "position_established",
@@ -313,6 +323,8 @@ async def drafter_node(state: RequestState) -> dict[str, Any]:
         "pay_setting_criteria": criteria,
         "human_feedback": None,
         "revision_count": revision + 1 if review is not None else revision,
+        "tokens_used": recorder.total_tokens,
+        "cost_usd": recorder.cost_usd,
         **audited(
             Actor.DRAFTER,
             "draft_written" if review is None else "draft_revised",
@@ -361,6 +373,8 @@ async def reviewer_node(state: RequestState) -> dict[str, Any]:
     return {
         "review": review,
         "status": (RequestStatus.IN_PROGRESS if revising else RequestStatus.AWAITING_APPROVAL),
+        "tokens_used": recorder.total_tokens,
+        "cost_usd": recorder.cost_usd,
         **audited(
             Actor.REVIEWER,
             "draft_reviewed",
@@ -378,7 +392,7 @@ async def reviewer_node(state: RequestState) -> dict[str, Any]:
 def route_after_review(state: RequestState) -> str:
     """Send the draft back for revision, or stop for a human decision."""
     if state.get("errors"):
-        return END
+        return DEGRADED
 
     review = state.get("review")
     if review is None:
@@ -474,18 +488,51 @@ async def approval_node(state: RequestState) -> dict[str, Any]:
 def route_after_approval(state: RequestState) -> str:
     """Redraft if changes were requested; otherwise the request is settled."""
     if state.get("errors"):
-        return END
+        return DEGRADED
 
     return DRAFTER if state.get("approval_decision") == CHANGES_REQUESTED else END
 
 
-def _continue_unless_failed(next_node: str) -> Callable[[RequestState], str]:
-    """Build an edge that stops the run if the previous node failed."""
+def _guarded(next_node: str) -> Callable[[RequestState], str]:
+    """Build an edge that diverts a request that cannot safely continue.
+
+    Two ways a request stops early: a node failed, or the request has
+    spent more than it is allowed. Both go to the degraded response
+    rather than ending, because an employee who receives nothing has been
+    told less than one who receives an acknowledgement.
+    """
 
     def route(state: RequestState) -> str:
-        return END if state.get("errors") else next_node
+        if state.get("errors"):
+            return DEGRADED
+        if over_budget(state.get("tokens_used", 0), state.get("cost_usd", 0.0)):
+            return DEGRADED
+        return next_node
 
     return route
+
+
+async def degraded_node(state: RequestState) -> dict[str, Any]:
+    """Acknowledge a request the pipeline could not answer.
+
+    No model is called. The circumstances that reach this node are ones
+    where model calls are the thing failing, so composing this response
+    with one would be asking the broken part to explain itself.
+
+    The status is failure, because the automated pipeline did fail. The
+    employee still receives a response, and the request is queued for a
+    person.
+    """
+    errors = state.get("errors", [])
+    reason = over_budget(state.get("tokens_used", 0), state.get("cost_usd", 0.0)) or (
+        errors[0] if errors else "the request could not be completed"
+    )
+
+    return {
+        "draft": degraded_letter(reason),
+        "status": RequestStatus.FAILED,
+        **audited(Actor.SYSTEM, "degraded_response_issued", **degraded_detail(reason, errors)),
+    }
 
 
 def build_graph(checkpointer: Any = None) -> CompiledStateGraph[Any, Any, Any]:
@@ -516,6 +563,7 @@ def build_graph(checkpointer: Any = None) -> CompiledStateGraph[Any, Any, Any]:
         builder.add_node(name, node, retry_policy=NODE_RETRY_POLICY, timeout=timeout)
 
     builder.add_node(APPROVAL, approval_node)
+    builder.add_node(DEGRADED, degraded_node)
 
     builder.add_edge(START, INTAKE)
     builder.add_conditional_edges(
@@ -525,31 +573,32 @@ def build_graph(checkpointer: Any = None) -> CompiledStateGraph[Any, Any, Any]:
             RESPOND_INFORMATIONAL: RESPOND_INFORMATIONAL,
             RESPOND_OWN_DATA: RESPOND_OWN_DATA,
             ANALYST: ANALYST,
+            DEGRADED: DEGRADED,
             END: END,
         },
     )
 
-    builder.add_edge(RESPOND_INFORMATIONAL, END)
-    builder.add_edge(RESPOND_OWN_DATA, END)
+    for source, following in (
+        (RESPOND_INFORMATIONAL, END),
+        (RESPOND_OWN_DATA, END),
+        (ANALYST, REGULATORY),
+        (REGULATORY, DRAFTER),
+        (DRAFTER, REVIEWER),
+    ):
+        builder.add_conditional_edges(
+            source, _guarded(following), {following: following, DEGRADED: DEGRADED}
+        )
 
     builder.add_conditional_edges(
-        ANALYST,
-        _continue_unless_failed(REGULATORY),
-        {REGULATORY: REGULATORY, END: END},
+        REVIEWER,
+        route_after_review,
+        {DRAFTER: DRAFTER, APPROVAL: APPROVAL, DEGRADED: DEGRADED, END: END},
     )
     builder.add_conditional_edges(
-        REGULATORY,
-        _continue_unless_failed(DRAFTER),
-        {DRAFTER: DRAFTER, END: END},
+        APPROVAL,
+        route_after_approval,
+        {DRAFTER: DRAFTER, DEGRADED: DEGRADED, END: END},
     )
-    builder.add_conditional_edges(
-        DRAFTER,
-        _continue_unless_failed(REVIEWER),
-        {REVIEWER: REVIEWER, END: END},
-    )
-    builder.add_conditional_edges(
-        REVIEWER, route_after_review, {DRAFTER: DRAFTER, APPROVAL: APPROVAL, END: END}
-    )
-    builder.add_conditional_edges(APPROVAL, route_after_approval, {DRAFTER: DRAFTER, END: END})
+    builder.add_edge(DEGRADED, END)
 
     return builder.compile(checkpointer=checkpointer)

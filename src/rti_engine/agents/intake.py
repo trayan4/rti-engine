@@ -68,6 +68,8 @@ class IntakeResult(BaseModel):
     can tell is being used."""
 
     used_fallback: bool = False
+    tokens_used: int = 0
+    cost_usd: float = 0.0
 
 
 INTAKE_PROMPT = Prompt(
@@ -165,4 +167,6 @@ async def classify_request(request_text: str) -> IntakeResult:
         prompt_identifier=INTAKE_PROMPT.identifier,
         served_by=recorder.served_by,
         used_fallback=recorder.used_fallback,
+        tokens_used=recorder.total_tokens,
+        cost_usd=recorder.cost_usd,
     )

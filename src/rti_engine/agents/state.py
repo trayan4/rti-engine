@@ -96,6 +96,11 @@ class RequestState(TypedDict, total=False):
     the automated findings on the next attempt."""
 
     status: RequestStatus
+    tokens_used: Annotated[int, add]
+    cost_usd: Annotated[float, add]
+    """Accumulated across nodes, so a guard can read what a request has
+    spent without asking each node what it used."""
+
     audit: Annotated[list[AuditEntry], add]
     errors: Annotated[list[str], add]
 
@@ -124,6 +129,8 @@ def initial_state(
         approval_decision=None,
         human_feedback=None,
         status=RequestStatus.RECEIVED,
+        tokens_used=0,
+        cost_usd=0.0,
         audit=[
             AuditEntry(
                 actor=Actor.SYSTEM,

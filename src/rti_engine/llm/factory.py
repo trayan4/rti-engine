@@ -21,9 +21,10 @@ from functools import lru_cache
 from typing import Any
 
 from langchain_anthropic import ChatAnthropic
+from langchain_core.callbacks import AsyncCallbackHandler
 from langchain_core.language_models import BaseChatModel, LanguageModelInput
 from langchain_core.messages import BaseMessage
-from langchain_core.runnables import Runnable
+from langchain_core.runnables import Runnable, RunnableConfig
 from langchain_core.tools import BaseTool
 from langchain_groq import ChatGroq
 from langchain_openai import ChatOpenAI, OpenAIEmbeddings
@@ -198,3 +199,12 @@ def get_embeddings() -> OpenAIEmbeddings:
         base_url=_require(settings.azure_openai_base_url, "AZURE_OPENAI_ENDPOINT"),
         api_key=_require_secret(settings.azure_openai_api_key, "AZURE_OPENAI_API_KEY"),
     )
+
+
+def with_recorder(recorder: AsyncCallbackHandler) -> RunnableConfig:
+    """Return an invocation config that records which model served a call.
+
+    Attached per call rather than to the model, because models are cached
+    and shared: a recorder bound to one would mix requests together.
+    """
+    return RunnableConfig(callbacks=[recorder])

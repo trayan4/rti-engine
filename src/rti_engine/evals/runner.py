@@ -27,6 +27,7 @@ from rti_engine.agents.state import (
 )
 from rti_engine.db.models import AutonomyTier, RequestStatus
 from rti_engine.evals.cases import ScenarioCase, TierCase, scenario_cases, tier_cases
+from rti_engine.evals.trajectory import check_trajectory
 from rti_engine.mcp.analytics_server import DATASET_PATH
 
 TIER_CONCURRENCY = 6
@@ -84,6 +85,7 @@ class ScenarioOutcome(BaseModel):
     miscalibrated reviewer can only be told from what it said.
     """
 
+    trajectory_valid: bool
     revisions: int
     tokens: int
     cost_usd: float
@@ -195,6 +197,11 @@ def _score_scenario(case: ScenarioCase, state: RequestState) -> list[str]:
     failures: list[str] = []
     status = current_status(state)
 
+    # The path is checked whatever the outcome: a request that ended in
+    # the right place by the wrong route is still a defect.
+    for violation in check_trajectory(state.get("audit", []), current_tier(state)):
+        failures.append(f"trajectory: {violation.rule} — {violation.detail}")
+
     if not case.must_complete:
         if status is not RequestStatus.FAILED:
             failures.append(f"expected a refusal but the request reached {status.value}")
@@ -257,6 +264,7 @@ async def _run_scenario_case(case: ScenarioCase, limit: asyncio.Semaphore) -> Sc
         verdict_actual=verdict,
         figures_grounded=check.grounded if check else None,
         reviewer_approved=review.approved if review else None,
+        trajectory_valid=not check_trajectory(state.get("audit", []), current_tier(state)),
         blocking_findings=[
             {"kind": finding.kind, "quote": finding.quote, "problem": finding.problem}
             for finding in review.blocking

@@ -1,4 +1,4 @@
-.PHONY: install lint format typecheck test check reqs data ingest graph
+.PHONY: install lint format typecheck test check reqs data ingest graph eval-routing eval-scenarios
 
 install:
 	uv sync
@@ -29,3 +29,9 @@ ingest:
 
 graph:
 	uv run python -m rti_engine.knowledge.graph_ingest
+
+eval-routing:
+	uv run python -m rti_engine.evals routing
+
+eval-scenarios:
+	uv run python -m rti_engine.evals scenarios

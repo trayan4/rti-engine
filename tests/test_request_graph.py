@@ -20,12 +20,13 @@ from rti_engine.agents.graph import (
     ANALYST,
     APPROVAL,
     DECISION_STATUS,
+    DEGRADED,
     DRAFTER,
     REGULATORY,
     RESPOND_INFORMATIONAL,
     RESPOND_OWN_DATA,
     TIER_NODES,
-    _continue_unless_failed,
+    _guarded,
     approval_payload,
     build_graph,
     needs_revision,
@@ -99,13 +100,15 @@ def test_an_unclassified_request_ends_rather_than_defaulting() -> None:
     assert route_by_tier(state(tier=None)) == END
 
 
-def test_a_failed_request_ends() -> None:
-    assert route_by_tier(state(tier=AutonomyTier.T2, errors=["boom"])) == END
+def test_a_failed_request_reaches_the_degraded_response() -> None:
+    """An employee who receives nothing has been told less than one who
+    receives an acknowledgement."""
+    assert route_by_tier(state(tier=AutonomyTier.T2, errors=["boom"])) == DEGRADED
 
 
-def test_an_error_ends_the_run_even_with_a_tier_assigned() -> None:
+def test_an_error_diverts_the_run_even_with_a_tier_assigned() -> None:
     """Errors are checked first: a tier assigned before a failure is stale."""
-    assert route_by_tier(state(tier=AutonomyTier.T0, errors=["boom"])) == END
+    assert route_by_tier(state(tier=AutonomyTier.T0, errors=["boom"])) == DEGRADED
 
 
 # --- state updates ---
@@ -214,7 +217,7 @@ def test_a_blocked_draft_within_the_limit_returns_to_the_drafter() -> None:
 
 def test_a_failed_run_does_not_revise() -> None:
     failing = state(revision_count=0, review=review(blocking=1), errors=["boom"])
-    assert route_after_review(failing) == END
+    assert route_after_review(failing) == DEGRADED
 
 
 def test_a_missing_review_ends_rather_than_looping() -> None:
@@ -223,10 +226,16 @@ def test_a_missing_review_ends_rather_than_looping() -> None:
 
 def test_the_pipeline_stops_where_a_node_failed() -> None:
     """Each stage depends on the last; continuing past a failure is worse."""
-    route = _continue_unless_failed(REGULATORY)
+    route = _guarded(REGULATORY)
 
     assert route(state()) == REGULATORY
-    assert route(state(errors=["analysis failed"])) == END
+    assert route(state(errors=["analysis failed"])) == DEGRADED
+
+
+def test_a_request_over_budget_is_diverted() -> None:
+    """A runaway request stops rather than spending without a ceiling."""
+    route = _guarded(REGULATORY)
+    assert route(state(tokens_used=10_000_000)) == DEGRADED
 
 
 # --- human approval ---

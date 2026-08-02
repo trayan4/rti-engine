@@ -24,6 +24,8 @@ from typing import Any, Literal
 
 from langgraph.graph import END, START, StateGraph
 from langgraph.graph.state import CompiledStateGraph
+from langgraph.types import interrupt
+from pydantic import BaseModel, ConfigDict, Field
 
 from rti_engine.agents.analyst import analyse_requester_group
 from rti_engine.agents.drafter import draft_response, fetch_pay_setting_criteria
@@ -51,6 +53,33 @@ ANALYST: TierNode = "analyst"
 REGULATORY = "regulatory"
 DRAFTER = "drafter"
 REVIEWER = "reviewer"
+APPROVAL = "approval"
+
+
+class HumanDecision(BaseModel):
+    """A person's decision on a Tier 2 response.
+
+    Supplied when the graph is resumed. Nothing an agent produces can
+    construct one: the run stops until a caller outside the graph provides
+    it.
+    """
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    decision: str = Field(description="approved, rejected, or changes_requested")
+    reviewer_id: str
+    comment: str | None = None
+
+
+APPROVED = "approved"
+REJECTED = "rejected"
+CHANGES_REQUESTED = "changes_requested"
+
+DECISION_STATUS = {
+    APPROVED: RequestStatus.APPROVED,
+    REJECTED: RequestStatus.REJECTED,
+    CHANGES_REQUESTED: RequestStatus.IN_PROGRESS,
+}
 
 TIER_NODES: dict[AutonomyTier, TierNode] = {
     AutonomyTier.T0: RESPOND_INFORMATIONAL,
@@ -220,7 +249,18 @@ async def drafter_node(state: RequestState) -> dict[str, Any]:
         )
 
     review = state.get("review")
-    feedback = revision_feedback(review) if review is not None else None
+    human = state.get("human_feedback")
+
+    # A person's own words take precedence over the automated findings:
+    # they saw the draft the findings were raised against and decided
+    # something else mattered more.
+    if human:
+        feedback = f"A reviewer read this draft and asked for changes:\n\n{human}"
+    elif review is not None:
+        feedback = revision_feedback(review)
+    else:
+        feedback = None
+
     criteria = state.get("pay_setting_criteria")
 
     try:
@@ -245,6 +285,7 @@ async def drafter_node(state: RequestState) -> dict[str, Any]:
     return {
         "draft": letter,
         "pay_setting_criteria": criteria,
+        "human_feedback": None,
         "revision_count": revision + 1 if review is not None else revision,
         **audited(
             Actor.DRAFTER,
@@ -305,11 +346,7 @@ async def reviewer_node(state: RequestState) -> dict[str, Any]:
 
 
 def route_after_review(state: RequestState) -> str:
-    """Send the draft back for revision, or stop for a human decision.
-
-    A Tier 2 response never completes here. Approved or not, it ends
-    awaiting approval — that is what the tier means.
-    """
+    """Send the draft back for revision, or stop for a human decision."""
     if state.get("errors"):
         return END
 
@@ -317,7 +354,99 @@ def route_after_review(state: RequestState) -> str:
     if review is None:
         return END
 
-    return DRAFTER if needs_revision(state, review) else END
+    return DRAFTER if needs_revision(state, review) else APPROVAL
+
+
+def approval_payload(state: RequestState) -> dict[str, Any]:
+    """Build what a person needs in order to decide.
+
+    The letter as it would be sent, plus what the reviewer found and
+    whether it accepted the draft. A decision made without the findings is
+    a rubber stamp.
+    """
+    draft = state.get("draft")
+    review = state.get("review")
+    if draft is None or review is None:
+        raise ValueError("an approval payload requires both a draft and a review")
+
+    return {
+        "request_id": state["request_id"],
+        "jurisdiction": state["jurisdiction"],
+        "letter": draft.render(),
+        "figures_used": [
+            {"value": figure.value, "source": figure.source_field} for figure in draft.figures_used
+        ],
+        "citations": draft.citations,
+        "reviewer_approved": review.approved,
+        "revisions_used": state.get("revision_count", 0),
+        "blocking_findings": [
+            {"kind": finding.kind, "quote": finding.quote, "problem": finding.problem}
+            for finding in review.blocking
+        ],
+        "advisory_findings": [
+            {"kind": finding.kind, "problem": finding.problem} for finding in review.advisory
+        ],
+        "decisions": [APPROVED, REJECTED, CHANGES_REQUESTED],
+    }
+
+
+def parse_decision(raw: Any) -> HumanDecision:
+    """Validate what a caller supplied on resume.
+
+    An unrecognised decision is refused rather than treated as an
+    approval: a malformed resume must not release a statutory disclosure.
+    """
+    decision = raw if isinstance(raw, HumanDecision) else HumanDecision.model_validate(raw)
+    if decision.decision not in DECISION_STATUS:
+        permitted = ", ".join(sorted(DECISION_STATUS))
+        raise ValueError(f"unknown decision {decision.decision!r}; permitted: {permitted}")
+    return decision
+
+
+async def approval_node(state: RequestState) -> dict[str, Any]:
+    """Pause until a person decides.
+
+    The run stops here. The process may exit; the request resumes when the
+    graph is invoked again with the same thread id and a decision.
+
+    No agent reaches past this point. That is what Tier 2 means.
+    """
+    if state.get("draft") is None or state.get("review") is None:
+        return failed(
+            Actor.SUPERVISOR,
+            "approval_failed",
+            RuntimeError("approval requires a draft and a review"),
+        )
+
+    raw = interrupt(approval_payload(state))
+
+    try:
+        decision = parse_decision(raw)
+    except Exception as error:
+        return failed(Actor.SUPERVISOR, "approval_failed", error)
+
+    approved = decision.decision == APPROVED
+    return {
+        "approval_decision": decision.decision,
+        "approved_by": decision.reviewer_id if approved else None,
+        "human_feedback": (decision.comment if decision.decision == CHANGES_REQUESTED else None),
+        "status": DECISION_STATUS[decision.decision],
+        **audited(
+            Actor.HUMAN,
+            "approval_decided",
+            decision=decision.decision,
+            reviewer_id=decision.reviewer_id,
+            has_comment=bool(decision.comment),
+        ),
+    }
+
+
+def route_after_approval(state: RequestState) -> str:
+    """Redraft if changes were requested; otherwise the request is settled."""
+    if state.get("errors"):
+        return END
+
+    return DRAFTER if state.get("approval_decision") == CHANGES_REQUESTED else END
 
 
 def _continue_unless_failed(next_node: str) -> Callable[[RequestState], str]:
@@ -348,6 +477,7 @@ def build_graph(checkpointer: Any = None) -> CompiledStateGraph[Any, Any, Any]:
     builder.add_node(REGULATORY, regulatory_node)
     builder.add_node(DRAFTER, drafter_node)
     builder.add_node(REVIEWER, reviewer_node)
+    builder.add_node(APPROVAL, approval_node)
 
     builder.add_edge(START, INTAKE)
     builder.add_conditional_edges(
@@ -379,6 +509,9 @@ def build_graph(checkpointer: Any = None) -> CompiledStateGraph[Any, Any, Any]:
         _continue_unless_failed(REVIEWER),
         {REVIEWER: REVIEWER, END: END},
     )
-    builder.add_conditional_edges(REVIEWER, route_after_review, {DRAFTER: DRAFTER, END: END})
+    builder.add_conditional_edges(
+        REVIEWER, route_after_review, {DRAFTER: DRAFTER, APPROVAL: APPROVAL, END: END}
+    )
+    builder.add_conditional_edges(APPROVAL, route_after_approval, {DRAFTER: DRAFTER, END: END})
 
     return builder.compile(checkpointer=checkpointer)

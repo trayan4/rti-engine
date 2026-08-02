@@ -48,6 +48,7 @@ class Actor(enum.StrEnum):
     REGULATORY = "regulatory"
     DRAFTER = "drafter"
     REVIEWER = "reviewer"
+    HUMAN = "human"
     SYSTEM = "system"
 
 
@@ -89,6 +90,11 @@ class RequestState(TypedDict, total=False):
     approved_by: str | None
     """Set when a human approves a Tier 2 response. Never set by an agent."""
 
+    approval_decision: str | None
+    human_feedback: str | None
+    """A reviewer's own words when they send a draft back, used in place of
+    the automated findings on the next attempt."""
+
     status: RequestStatus
     audit: Annotated[list[AuditEntry], add]
     errors: Annotated[list[str], add]
@@ -115,6 +121,8 @@ def initial_state(
         revision_count=0,
         pay_setting_criteria=None,
         approved_by=None,
+        approval_decision=None,
+        human_feedback=None,
         status=RequestStatus.RECEIVED,
         audit=[
             AuditEntry(
@@ -168,3 +176,13 @@ def current_tier(state: RequestState) -> AutonomyTier | None:
     """
     tier = state.get("tier")
     return AutonomyTier(tier) if tier is not None else None
+
+
+def current_status(state: RequestState) -> RequestStatus:
+    """Return the status as an enum, whatever form it is stored in.
+
+    Same reason as ``current_tier``: msgpack stores a string enum as a
+    string, so a resumed request carries a plain value where callers
+    expect an enum.
+    """
+    return RequestStatus(state["status"])

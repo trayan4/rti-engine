@@ -204,6 +204,11 @@ unsupported claims.
 The test is simple: can you name the citation? Then state it. If not,
 leave it out.
 
+Before writing that something cannot be established, read the legal
+position again. Saying a fact is unavailable when it was given to you is
+a false statement about the sources, and a worse one than omitting it —
+the reader concludes nobody knows, when somebody does.
+
 ## Tone
 
 The employee asked a fair question and is entitled to a straight answer.

@@ -15,16 +15,22 @@ from typing import Any
 import pytest
 from langgraph.graph import END
 
+from rti_engine.agents.drafter import DraftLetter, FigureUse, LetterSection
 from rti_engine.agents.graph import (
     ANALYST,
+    APPROVAL,
+    DECISION_STATUS,
     DRAFTER,
     REGULATORY,
     RESPOND_INFORMATIONAL,
     RESPOND_OWN_DATA,
     TIER_NODES,
     _continue_unless_failed,
+    approval_payload,
     build_graph,
     needs_revision,
+    parse_decision,
+    route_after_approval,
     route_after_review,
     route_by_tier,
 )
@@ -190,15 +196,16 @@ def test_revisions_stop_at_the_limit() -> None:
 
 
 def test_a_tier_two_request_never_completes_on_its_own() -> None:
-    """Approved or not, it ends awaiting a human decision."""
+    """Approved or not, it stops at the approval node for a human decision."""
     for result in (review(approved=True), review(blocking=1)):
-        assert route_after_review(state(revision_count=MAX_REVISIONS, review=result)) == END
+        routed = route_after_review(state(revision_count=MAX_REVISIONS, review=result))
+        assert routed == APPROVAL
 
 
 def test_an_exhausted_draft_still_reaches_a_human() -> None:
     """A draft the reviewer will not approve goes forward with its findings."""
     routed = route_after_review(state(revision_count=MAX_REVISIONS, review=review(blocking=3)))
-    assert routed == END
+    assert routed == APPROVAL
 
 
 def test_a_blocked_draft_within_the_limit_returns_to_the_drafter() -> None:
@@ -220,3 +227,67 @@ def test_the_pipeline_stops_where_a_node_failed() -> None:
 
     assert route(state()) == REGULATORY
     assert route(state(errors=["analysis failed"])) == END
+
+
+# --- human approval ---
+
+
+def test_an_approval_settles_the_request() -> None:
+    decision = parse_decision({"decision": "approved", "reviewer_id": "hr-7", "comment": "fine"})
+    assert DECISION_STATUS[decision.decision] is RequestStatus.APPROVED
+
+
+def test_a_rejection_settles_the_request() -> None:
+    decision = parse_decision({"decision": "rejected", "reviewer_id": "hr-7"})
+    assert DECISION_STATUS[decision.decision] is RequestStatus.REJECTED
+
+
+def test_requesting_changes_returns_to_the_drafter() -> None:
+    settled = state(approval_decision="changes_requested")
+    assert route_after_approval(settled) == DRAFTER
+
+
+def test_a_settled_request_goes_no_further() -> None:
+    for outcome in ("approved", "rejected"):
+        assert route_after_approval(state(approval_decision=outcome)) == END
+
+
+def test_an_unknown_decision_is_refused() -> None:
+    """A malformed resume must not release a statutory disclosure."""
+    with pytest.raises(ValueError, match="unknown decision"):
+        parse_decision({"decision": "looks_fine", "reviewer_id": "hr-7"})
+
+
+def test_a_decision_without_a_reviewer_is_refused() -> None:
+    """An approval nobody is accountable for is not an approval."""
+    with pytest.raises(ValueError):
+        parse_decision({"decision": "approved"})
+
+
+def test_the_decision_schema_is_closed() -> None:
+    with pytest.raises(ValueError):
+        parse_decision({"decision": "approved", "reviewer_id": "hr-7", "auto_approve": True})
+
+
+def test_the_payload_carries_the_findings_a_reviewer_needs() -> None:
+    """A decision made without the findings is a rubber stamp."""
+    letter = DraftLetter(
+        subject="s",
+        salutation="Dear colleague,",
+        sections=[LetterSection(heading="h", body="b")],
+        closing="Yours sincerely,",
+        figures_used=[FigureUse(value="7.8%", source_field="adjusted_gap_pct", meaning="gap")],
+        citations=["Directive (EU) 2023/970, Article 7"],
+    )
+    payload = approval_payload(state(draft=letter, review=review(blocking=2), revision_count=2))
+
+    assert payload["reviewer_approved"] is False
+    assert len(payload["blocking_findings"]) == 2
+    assert payload["revisions_used"] == 2
+    assert payload["figures_used"][0]["value"] == "7.8%"
+    assert set(payload["decisions"]) == set(DECISION_STATUS)
+
+
+def test_a_payload_needs_both_a_draft_and_a_review() -> None:
+    with pytest.raises(ValueError, match="requires both"):
+        approval_payload(state(draft=None, review=None))

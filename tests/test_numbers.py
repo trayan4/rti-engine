@@ -138,6 +138,15 @@ def test_declaring_a_figure_does_not_ground_it() -> None:
 # --- declaration bookkeeping ---
 
 
+def test_citation_digits_are_not_reported_as_undeclared() -> None:
+    """The digits in "Directive (EU) 2023/970" are part of a name."""
+    letter = "This response is provided under Directive (EU) 2023/970."
+    result = validate_numbers(letter, [], {"instrument": "2023/970"})
+
+    assert result.grounded
+    assert result.undeclared == []
+
+
 def test_an_undeclared_but_sourced_figure_is_advisory() -> None:
     """A missed declaration is a lapse; the number is still traceable."""
     result = validate_numbers("The average is 71,885.14 EUR.", [], FACTS)

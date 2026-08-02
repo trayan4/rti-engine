@@ -28,6 +28,19 @@ NUMBER_PATTERN = re.compile(r"-?\d[\d,]*(?:\.\d+)?")
 CONTEXT_CHARACTERS = 60
 """How much surrounding text to quote when reporting an ungrounded figure."""
 
+CITATION_PATTERN = re.compile(
+    r"\b\d{1,4}/\d{1,4}(?:/[A-Z]{2,4})?\b"  # 2023/970, 902/2020, 2006/54/EC
+    r"|\(EU\)\s*\d{4}/\d{1,4}"  # (EU) 2023/970
+    r"|\b(?:Article|Recital|section|Section)\s+\d{1,3}\b"
+)
+"""Where a number identifies an instrument rather than a quantity.
+
+The digits in "Directive (EU) 2023/970" are part of a name. They are
+still checked for grounding — a letter citing law it was not given should
+be flagged — but reporting them as undeclared figures fills the audit
+bundle with noise a reviewer has to read past.
+"""
+
 STRUCTURAL_MAXIMUM = Decimal("100")
 """Small integers below this are permitted without a source.
 
@@ -90,6 +103,15 @@ class ValidationResult(BaseModel):
         return "\n".join(parts)
 
 
+def _citation_spans(text: str) -> list[tuple[int, int]]:
+    """Character ranges occupied by instrument and section references."""
+    return [(match.start(), match.end()) for match in CITATION_PATTERN.finditer(text)]
+
+
+def _within(position: int, spans: list[tuple[int, int]]) -> bool:
+    return any(start <= position < end for start, end in spans)
+
+
 def _as_decimal(text: str) -> Decimal | None:
     """Parse a number as written, or None if it cannot be read."""
     try:
@@ -149,6 +171,7 @@ def validate_numbers(
     permitted = permitted_values(*sources)
     declared_values = {value for item in declared for value, _, _ in numbers_in(item)}
 
+    citations = _citation_spans(letter_text)
     ungrounded: list[UngroundedFigure] = []
     undeclared: list[str] = []
     checked = 0
@@ -157,7 +180,11 @@ def validate_numbers(
         checked += 1
 
         if value in permitted:
-            if value not in declared_values and abs(value) >= STRUCTURAL_MAXIMUM:
+            if (
+                value not in declared_values
+                and abs(value) >= STRUCTURAL_MAXIMUM
+                and not _within(position, citations)
+            ):
                 undeclared.append(written)
             continue
 

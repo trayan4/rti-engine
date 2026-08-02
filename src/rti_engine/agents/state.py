@@ -27,6 +27,7 @@ from rti_engine.agents.intake import IntakeResult
 from rti_engine.agents.regulatory import RegulatoryPosition
 from rti_engine.agents.reviewer import ReviewResult
 from rti_engine.db.models import AutonomyTier, RequestStatus
+from rti_engine.guardrails.numbers import ValidationResult
 
 MAX_REVISIONS = 2
 """How many times the Drafter may be sent back by the Reviewer.
@@ -82,6 +83,7 @@ class RequestState(TypedDict, total=False):
     position: RegulatoryPosition | None
     draft: DraftLetter | None
     review: ReviewResult | None
+    number_check: ValidationResult | None
 
     revision_count: int
     pay_setting_criteria: str | None
@@ -126,6 +128,7 @@ def initial_state(
         position=None,
         draft=None,
         review=None,
+        number_check=None,
         revision_count=0,
         pay_setting_criteria=None,
         approved_by=None,

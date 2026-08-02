@@ -29,7 +29,12 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from rti_engine.agents.analyst import analyse_requester_group
 from rti_engine.agents.budget import degraded_detail, degraded_letter, over_budget
-from rti_engine.agents.drafter import draft_response, fetch_pay_setting_criteria
+from rti_engine.agents.drafter import (
+    build_fact_sheet,
+    build_legal_position,
+    draft_response,
+    fetch_pay_setting_criteria,
+)
 from rti_engine.agents.intake import classify_request
 from rti_engine.agents.regulatory import establish_position
 from rti_engine.agents.responder import answer_informational, answer_own_data
@@ -48,6 +53,7 @@ from rti_engine.agents.state import (
     failed,
 )
 from rti_engine.db.models import AutonomyTier, RequestStatus
+from rti_engine.guardrails.numbers import validate_numbers
 from rti_engine.guardrails.pii import scan
 from rti_engine.llm.served import ModelRecorder
 from rti_engine.observability.tracing import enable_tracing
@@ -62,6 +68,7 @@ ANALYST: TierNode = "analyst"
 REGULATORY = "regulatory"
 DRAFTER = "drafter"
 REVIEWER = "reviewer"
+VALIDATOR = "validator"
 APPROVAL = "approval"
 DEGRADED = "degraded"
 
@@ -305,12 +312,15 @@ async def drafter_node(state: RequestState) -> dict[str, Any]:
 
     review = state.get("review")
     human = state.get("human_feedback")
+    check = state.get("number_check")
 
     # A person's own words take precedence over the automated findings:
     # they saw the draft the findings were raised against and decided
     # something else mattered more.
     if human:
         feedback = f"A reviewer read this draft and asked for changes:\n\n{human}"
+    elif check is not None and not check.grounded:
+        feedback = check.feedback()
     elif review is not None:
         feedback = revision_feedback(review)
     else:
@@ -344,7 +354,8 @@ async def drafter_node(state: RequestState) -> dict[str, Any]:
         "draft": letter,
         "pay_setting_criteria": criteria,
         "human_feedback": None,
-        "revision_count": revision + 1 if review is not None else revision,
+        "number_check": None,
+        "revision_count": (revision + 1 if review is not None or check is not None else revision),
         "tokens_used": recorder.total_tokens,
         "cost_usd": recorder.cost_usd,
         **audited(
@@ -357,6 +368,56 @@ async def drafter_node(state: RequestState) -> dict[str, Any]:
             **recorder.summary(),
         ),
     }
+
+
+async def validator_node(state: RequestState) -> dict[str, Any]:
+    """Check every figure in the draft against its sources.
+
+    Runs before the reviewer: it is deterministic, costs nothing, and
+    removes the mechanical failures from what a model is asked to judge.
+    A reviewer spending its attention on a fabricated number has less
+    left for the things only a reader can catch.
+    """
+    draft = state.get("draft")
+    analysis = state.get("analysis")
+    position = state.get("position")
+    if draft is None or analysis is None or position is None:
+        return failed(
+            Actor.SYSTEM,
+            "validation_failed",
+            RuntimeError("validation requires a draft, an analysis and a position"),
+        )
+
+    result = validate_numbers(
+        draft.render(),
+        [figure.value for figure in draft.figures_used],
+        build_fact_sheet(analysis),
+        build_legal_position(position),
+    )
+
+    return {
+        "number_check": result,
+        **audited(Actor.SYSTEM, "figures_validated", **result.summary()),
+    }
+
+
+def route_after_validation(state: RequestState) -> str:
+    """Send an ungrounded draft back, or pass it to the reviewer."""
+    if state.get("errors"):
+        return DEGRADED
+
+    check = state.get("number_check")
+    if check is None:
+        return DEGRADED
+
+    if check.grounded:
+        return REVIEWER
+
+    # An ungrounded figure is not a matter of judgment, so a revision is
+    # worth spending even when the reviewer might have approved. Once the
+    # revisions are used up the draft goes forward with the finding
+    # attached, for a person to see.
+    return DRAFTER if state.get("revision_count", 0) < MAX_REVISIONS else REVIEWER
 
 
 def needs_revision(state: RequestState, review: ReviewResult) -> bool:
@@ -584,6 +645,7 @@ def build_graph(checkpointer: Any = None) -> CompiledStateGraph[Any, Any, Any]:
     ):
         builder.add_node(name, node, retry_policy=NODE_RETRY_POLICY, timeout=timeout)
 
+    builder.add_node(VALIDATOR, validator_node)
     builder.add_node(APPROVAL, approval_node)
     builder.add_node(DEGRADED, degraded_node)
 
@@ -605,11 +667,17 @@ def build_graph(checkpointer: Any = None) -> CompiledStateGraph[Any, Any, Any]:
         (RESPOND_OWN_DATA, END),
         (ANALYST, REGULATORY),
         (REGULATORY, DRAFTER),
-        (DRAFTER, REVIEWER),
+        (DRAFTER, VALIDATOR),
     ):
         builder.add_conditional_edges(
             source, _guarded(following), {following: following, DEGRADED: DEGRADED}
         )
+
+    builder.add_conditional_edges(
+        VALIDATOR,
+        route_after_validation,
+        {DRAFTER: DRAFTER, REVIEWER: REVIEWER, DEGRADED: DEGRADED},
+    )
 
     builder.add_conditional_edges(
         REVIEWER,

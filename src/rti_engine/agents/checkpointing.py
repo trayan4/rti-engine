@@ -36,6 +36,8 @@ ALLOWED_TYPES: list[tuple[str, str]] = [
     ("rti_engine.agents.drafter", "LetterSection"),
     ("rti_engine.agents.reviewer", "Finding"),
     ("rti_engine.agents.reviewer", "ReviewResult"),
+    ("rti_engine.guardrails.numbers", "ValidationResult"),
+    ("rti_engine.guardrails.numbers", "UngroundedFigure"),
     ("rti_engine.db.models", "AutonomyTier"),
     ("rti_engine.db.models", "RequestStatus"),
 ]

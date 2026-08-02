@@ -90,6 +90,13 @@ def test_section_and_article_numbers_pass_unsourced() -> None:
     assert validate_numbers(letter, [], FACTS).grounded
 
 
+def test_a_small_whole_percentage_is_not_exempt() -> None:
+    """The exemption is for section numbers, judged on how they are
+    written. "Article 7" and "7%" are the same value and nothing alike."""
+    assert not validate_numbers("The gap is 12%.", [], FACTS).grounded
+    assert not validate_numbers("The gap is 0.0%.", [], FACTS).grounded
+
+
 def test_a_letter_with_no_figures_passes() -> None:
     """The degraded response contains none, and must not be rejected."""
     assert validate_numbers("A person will review your request.", [], FACTS).grounded

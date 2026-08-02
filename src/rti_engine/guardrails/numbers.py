@@ -112,6 +112,24 @@ def _within(position: int, spans: list[tuple[int, int]]) -> bool:
     return any(start <= position < end for start, end in spans)
 
 
+def _is_structural(value: Decimal, written: str, following: str) -> bool:
+    """Whether a number identifies a section rather than measuring something.
+
+    Judged on how it is written, not what it equals. "Article 7" and "7.0%"
+    are the same value and nothing alike: a section number is never
+    written with a decimal point, and never carries a percent sign.
+
+    Getting this wrong in the other direction was the bug — every whole
+    percentage under a hundred was passing unsourced, which is the class
+    of figure that matters most.
+    """
+    if "." in written:
+        return False
+    if following.lstrip().startswith("%"):
+        return False
+    return abs(value) < STRUCTURAL_MAXIMUM and value == value.to_integral_value()
+
+
 def _as_decimal(text: str) -> Decimal | None:
     """Parse a number as written, or None if it cannot be read."""
     try:
@@ -188,7 +206,8 @@ def validate_numbers(
                 undeclared.append(written)
             continue
 
-        if abs(value) < STRUCTURAL_MAXIMUM and value == value.to_integral_value():
+        following = letter_text[position + len(written) : position + len(written) + 2]
+        if _is_structural(value, written, following):
             continue
 
         ungrounded.append(

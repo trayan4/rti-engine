@@ -26,11 +26,14 @@ dependencies = [
     "neo4j>=6.2.0",
     "numpy>=2.5.1",
     "pandas>=3.0.5",
+    "presidio-analyzer>=2.2.362",
+    "presidio-anonymizer>=2.2.364",
     "psycopg[binary]>=3.3.4",
     "pulp>=3.3.2",
     "pyarrow>=25.0.0",
     "pydantic-settings>=2.14.2",
     "pyyaml>=6.0.3",
+    "spacy>=3.8.14",
     "sqlalchemy>=2.0.51",
     "statsmodels>=0.14.6",
     "tiktoken>=0.13.0",
@@ -76,5 +79,12 @@ filterwarnings = [
 ]
 
 [[tool.mypy.overrides]]
-module = ["statsmodels.*", "patsy.*", "formulaic.*", "pulp.*"]
+module = [
+    "statsmodels.*",
+    "patsy.*",
+    "formulaic.*",
+    "pulp.*",
+    "presidio_analyzer.*",
+    "presidio_anonymizer.*",
+]
 ignore_missing_imports = true

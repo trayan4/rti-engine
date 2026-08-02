@@ -48,6 +48,7 @@ from rti_engine.agents.state import (
     failed,
 )
 from rti_engine.db.models import AutonomyTier, RequestStatus
+from rti_engine.guardrails.pii import scan
 from rti_engine.llm.served import ModelRecorder
 from rti_engine.observability.tracing import enable_tracing
 
@@ -99,14 +100,24 @@ TIER_NODES: dict[AutonomyTier, TierNode] = {
 
 
 async def intake_node(state: RequestState) -> dict[str, Any]:
-    """Classify the request and record the tier it will be handled under."""
+    """Redact the request, then classify what remains.
+
+    Redaction happens first and everything downstream uses the result. A
+    request naming a colleague — "how much does Maria earn" — is still a
+    comparator request without the name, so nothing about the tier
+    decision needs it, and the name has no reason to reach a model's
+    context or a stored transcript.
+    """
+    inbound = scan(state["request_text"])
+
     try:
-        result = await classify_request(state["request_text"])
+        result = await classify_request(inbound.redacted)
     except Exception as error:
         reraise_if_transient(error)
         return failed(Actor.INTAKE, "classification_failed", error)
 
     return {
+        "redacted_request_text": inbound.redacted,
         "tier": result.tier,
         "intake": result,
         "status": RequestStatus.IN_PROGRESS,
@@ -122,8 +133,19 @@ async def intake_node(state: RequestState) -> dict[str, Any]:
             prompt=result.prompt_identifier,
             served_by=result.served_by,
             used_fallback=result.used_fallback,
+            **inbound.summary(),
         ),
     }
+
+
+def request_text(state: RequestState) -> str:
+    """The request as agents should see it.
+
+    The redacted form once intake has produced one. Falling back to the
+    original matters for the tier 0 and tier 1 paths, which can be
+    invoked directly in tests without passing through intake.
+    """
+    return state.get("redacted_request_text") or state["request_text"]
 
 
 def route_by_tier(state: RequestState) -> str:
@@ -153,7 +175,7 @@ async def respond_informational_node(state: RequestState) -> dict[str, Any]:
     try:
         letter = await answer_informational(
             state["requester_employee_id"],
-            state["request_text"],
+            request_text(state),
             state["jurisdiction"],
             recorder=recorder,
         )
@@ -187,7 +209,7 @@ async def respond_own_data_node(state: RequestState) -> dict[str, Any]:
     try:
         letter = await answer_own_data(
             state["requester_employee_id"],
-            state["request_text"],
+            request_text(state),
             state["jurisdiction"],
             recorder=recorder,
         )
@@ -242,7 +264,7 @@ async def regulatory_node(state: RequestState) -> dict[str, Any]:
             state["requester_employee_id"],
             AutonomyTier.T2.value,
             state["jurisdiction"],
-            state["request_text"],
+            request_text(state),
             recorder=recorder,
         )
     except Exception as error:
@@ -306,7 +328,7 @@ async def drafter_node(state: RequestState) -> dict[str, Any]:
             )
 
         letter = await draft_response(
-            state["request_text"],
+            request_text(state),
             analysis,
             position,
             pay_setting_criteria=criteria,

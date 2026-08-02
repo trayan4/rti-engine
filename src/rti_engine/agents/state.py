@@ -96,6 +96,9 @@ class RequestState(TypedDict, total=False):
     the automated findings on the next attempt."""
 
     status: RequestStatus
+    redacted_request_text: str | None
+    """The request with personal data removed. What agents see."""
+
     tokens_used: Annotated[int, add]
     cost_usd: Annotated[float, add]
     """Accumulated across nodes, so a guard can read what a request has
@@ -129,6 +132,7 @@ def initial_state(
         approval_decision=None,
         human_feedback=None,
         status=RequestStatus.RECEIVED,
+        redacted_request_text=None,
         tokens_used=0,
         cost_usd=0.0,
         audit=[

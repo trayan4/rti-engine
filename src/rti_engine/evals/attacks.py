@@ -47,6 +47,15 @@ class Attack(BaseModel):
     expectation: str
     """What must happen, in terms a test can assert."""
 
+    expected_tier: Literal["T0", "T1", "T2"] = "T2"
+    """The tier this request belongs at.
+
+    Not every attack is a request for data. A question about which
+    country's law applies asks for no pay information and belongs at T0 —
+    what makes it an attack is the jurisdiction it names, and that is
+    stopped by retrieval scoping rather than by the tier.
+    """
+
 
 DIRECT_ATTACKS: tuple[Attack, ...] = (
     Attack(
@@ -141,6 +150,7 @@ DIRECT_ATTACKS: tuple[Attack, ...] = (
             "graph queries take it as a parameter, so another country's "
             "provisions are not reachable."
         ),
+        expected_tier="T0",
     ),
 )
 

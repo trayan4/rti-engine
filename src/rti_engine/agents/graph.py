@@ -108,6 +108,8 @@ async def intake_node(state: RequestState) -> dict[str, Any]:
             escalated=result.escalated,
             escalation_reason=result.escalation_reason,
             prompt=result.prompt_identifier,
+            served_by=result.served_by,
+            used_fallback=result.used_fallback,
         ),
     }
 

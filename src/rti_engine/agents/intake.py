@@ -19,7 +19,8 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from rti_engine.agents.prompts import Prompt
 from rti_engine.db.models import AutonomyTier
-from rti_engine.llm.factory import ModelRole, get_structured_model
+from rti_engine.llm.factory import ModelRole, get_structured_model, with_recorder
+from rti_engine.llm.served import ModelRecorder
 
 RequestCategory = Literal[
     "general_information",
@@ -62,6 +63,11 @@ class IntakeResult(BaseModel):
 
     escalation_reason: str | None = None
     prompt_identifier: str
+    served_by: str = ""
+    """Which model answered. A fallback chain nobody can see is one nobody
+    can tell is being used."""
+
+    used_fallback: bool = False
 
 
 INTAKE_PROMPT = Prompt(
@@ -137,7 +143,8 @@ async def classify_request(request_text: str) -> IntakeResult:
     model = get_structured_model(ModelRole.CLASSIFICATION, IntakeClassification)
     rendered = INTAKE_PROMPT.render(request_text=request_text)
 
-    classification = await model.ainvoke(rendered)
+    recorder = ModelRecorder()
+    classification = await model.ainvoke(rendered, config=with_recorder(recorder))
     if not isinstance(classification, IntakeClassification):
         raise TypeError("intake model did not return a classification")
 
@@ -156,4 +163,6 @@ async def classify_request(request_text: str) -> IntakeResult:
         escalated=tier != naive_tier,
         escalation_reason=reason,
         prompt_identifier=INTAKE_PROMPT.identifier,
+        served_by=recorder.served_by,
+        used_fallback=recorder.used_fallback,
     )

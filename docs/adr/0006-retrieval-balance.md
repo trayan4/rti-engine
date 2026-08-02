@@ -67,9 +67,10 @@ nothing relevant is not a test.
 
 ## Alternatives considered
 
-**Rely on the reranker planned for a later step.** Rejected: a reranker
-reorders candidates, so it cannot surface a chunk that never entered the
-candidate set. It remains valuable on top of quotas, not instead of them.
+**Add a reranking stage instead.** Rejected: a reranker reorders
+candidates, so it cannot surface a chunk that never entered the candidate
+set. It would be valuable on top of quotas, not instead of them, and is
+not currently planned.
 
 **Increase top-k until national chunks appear.** Rejected: it would take a
 large k to reach them, filling the model's context with weakly relevant

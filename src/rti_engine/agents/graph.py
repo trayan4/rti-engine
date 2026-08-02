@@ -32,6 +32,12 @@ from rti_engine.agents.drafter import draft_response, fetch_pay_setting_criteria
 from rti_engine.agents.intake import classify_request
 from rti_engine.agents.regulatory import establish_position
 from rti_engine.agents.responder import answer_informational, answer_own_data
+from rti_engine.agents.retry import (
+    FAST_NODE_TIMEOUT,
+    NODE_RETRY_POLICY,
+    NODE_TIMEOUT,
+    reraise_if_transient,
+)
 from rti_engine.agents.reviewer import ReviewResult, review_draft, revision_feedback
 from rti_engine.agents.state import (
     MAX_REVISIONS,
@@ -95,6 +101,7 @@ async def intake_node(state: RequestState) -> dict[str, Any]:
     try:
         result = await classify_request(state["request_text"])
     except Exception as error:
+        reraise_if_transient(error)
         return failed(Actor.INTAKE, "classification_failed", error)
 
     return {
@@ -147,6 +154,7 @@ async def respond_informational_node(state: RequestState) -> dict[str, Any]:
             recorder=recorder,
         )
     except Exception as error:
+        reraise_if_transient(error)
         return failed(Actor.SUPERVISOR, "informational_response_failed", error)
 
     return {
@@ -178,6 +186,7 @@ async def respond_own_data_node(state: RequestState) -> dict[str, Any]:
             recorder=recorder,
         )
     except Exception as error:
+        reraise_if_transient(error)
         return failed(Actor.SUPERVISOR, "own_data_response_failed", error)
 
     return {
@@ -199,6 +208,7 @@ async def analyst_node(state: RequestState) -> dict[str, Any]:
     try:
         analysis = await analyse_requester_group(state["requester_employee_id"], AutonomyTier.T2)
     except Exception as error:
+        reraise_if_transient(error)
         return failed(Actor.ANALYST, "analysis_failed", error)
 
     return {
@@ -228,6 +238,7 @@ async def regulatory_node(state: RequestState) -> dict[str, Any]:
             recorder=recorder,
         )
     except Exception as error:
+        reraise_if_transient(error)
         return failed(Actor.REGULATORY, "regulatory_position_failed", error)
 
     return {
@@ -293,6 +304,7 @@ async def drafter_node(state: RequestState) -> dict[str, Any]:
             recorder=recorder,
         )
     except Exception as error:
+        reraise_if_transient(error)
         return failed(Actor.DRAFTER, "draft_failed", error)
 
     revision = state.get("revision_count", 0)
@@ -340,6 +352,7 @@ async def reviewer_node(state: RequestState) -> dict[str, Any]:
     try:
         review = await review_draft(draft, analysis, position, recorder=recorder)
     except Exception as error:
+        reraise_if_transient(error)
         return failed(Actor.REVIEWER, "review_failed", error)
 
     revising = needs_revision(state, review)
@@ -487,13 +500,21 @@ def build_graph(checkpointer: Any = None) -> CompiledStateGraph[Any, Any, Any]:
 
     builder: StateGraph[RequestState, Any, Any, Any] = StateGraph(RequestState)
 
-    builder.add_node(INTAKE, intake_node)
-    builder.add_node(RESPOND_INFORMATIONAL, respond_informational_node)
-    builder.add_node(RESPOND_OWN_DATA, respond_own_data_node)
-    builder.add_node(ANALYST, analyst_node)
-    builder.add_node(REGULATORY, regulatory_node)
-    builder.add_node(DRAFTER, drafter_node)
-    builder.add_node(REVIEWER, reviewer_node)
+    # Every node below calls something outside this process, so each can
+    # fail for reasons that pass. The approval node does not: it waits for
+    # a person, and a decision that failed to parse will not parse on a
+    # second attempt.
+    for name, node, timeout in (
+        (INTAKE, intake_node, FAST_NODE_TIMEOUT),
+        (RESPOND_INFORMATIONAL, respond_informational_node, NODE_TIMEOUT),
+        (RESPOND_OWN_DATA, respond_own_data_node, NODE_TIMEOUT),
+        (ANALYST, analyst_node, NODE_TIMEOUT),
+        (REGULATORY, regulatory_node, NODE_TIMEOUT),
+        (DRAFTER, drafter_node, NODE_TIMEOUT),
+        (REVIEWER, reviewer_node, NODE_TIMEOUT),
+    ):
+        builder.add_node(name, node, retry_policy=NODE_RETRY_POLICY, timeout=timeout)
+
     builder.add_node(APPROVAL, approval_node)
 
     builder.add_edge(START, INTAKE)

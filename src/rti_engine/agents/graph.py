@@ -41,6 +41,7 @@ from rti_engine.agents.state import (
     failed,
 )
 from rti_engine.db.models import AutonomyTier, RequestStatus
+from rti_engine.llm.served import ModelRecorder
 from rti_engine.observability.tracing import enable_tracing
 
 TierNode = Literal["respond_informational", "respond_own_data", "analyst"]
@@ -137,11 +138,13 @@ async def respond_informational_node(state: RequestState) -> dict[str, Any]:
     Completes without human approval: no employee data is involved, and
     the tier makes none reachable.
     """
+    recorder = ModelRecorder()
     try:
         letter = await answer_informational(
             state["requester_employee_id"],
             state["request_text"],
             state["jurisdiction"],
+            recorder=recorder,
         )
     except Exception as error:
         return failed(Actor.SUPERVISOR, "informational_response_failed", error)
@@ -155,6 +158,7 @@ async def respond_informational_node(state: RequestState) -> dict[str, Any]:
             path=RESPOND_INFORMATIONAL,
             sections=len(letter.sections),
             citations=len(letter.citations),
+            **recorder.summary(),
         ),
     }
 
@@ -165,11 +169,13 @@ async def respond_own_data_node(state: RequestState) -> dict[str, Any]:
     Also completes without approval: the requester is being shown their
     own data, and the authorization layer permits nothing else.
     """
+    recorder = ModelRecorder()
     try:
         letter = await answer_own_data(
             state["requester_employee_id"],
             state["request_text"],
             state["jurisdiction"],
+            recorder=recorder,
         )
     except Exception as error:
         return failed(Actor.SUPERVISOR, "own_data_response_failed", error)
@@ -183,6 +189,7 @@ async def respond_own_data_node(state: RequestState) -> dict[str, Any]:
             path=RESPOND_OWN_DATA,
             sections=len(letter.sections),
             figures=len(letter.figures_used),
+            **recorder.summary(),
         ),
     }
 
@@ -211,12 +218,14 @@ async def analyst_node(state: RequestState) -> dict[str, Any]:
 
 async def regulatory_node(state: RequestState) -> dict[str, Any]:
     """Establish what the law requires of this employer, for this requester."""
+    recorder = ModelRecorder()
     try:
         position = await establish_position(
             state["requester_employee_id"],
             AutonomyTier.T2.value,
             state["jurisdiction"],
             state["request_text"],
+            recorder=recorder,
         )
     except Exception as error:
         return failed(Actor.REGULATORY, "regulatory_position_failed", error)
@@ -231,6 +240,7 @@ async def regulatory_node(state: RequestState) -> dict[str, Any]:
             legal_basis=position.legal_basis,
             citations=len(position.citations),
             caveats=len(position.caveats),
+            **recorder.summary(),
         ),
     }
 
@@ -265,6 +275,7 @@ async def drafter_node(state: RequestState) -> dict[str, Any]:
 
     criteria = state.get("pay_setting_criteria")
 
+    recorder = ModelRecorder()
     try:
         if criteria is None:
             criteria = await fetch_pay_setting_criteria(
@@ -279,6 +290,7 @@ async def drafter_node(state: RequestState) -> dict[str, Any]:
             position,
             pay_setting_criteria=criteria,
             revision_feedback=feedback,
+            recorder=recorder,
         )
     except Exception as error:
         return failed(Actor.DRAFTER, "draft_failed", error)
@@ -296,6 +308,7 @@ async def drafter_node(state: RequestState) -> dict[str, Any]:
             sections=len(letter.sections),
             figures=len(letter.figures_used),
             citations=len(letter.citations),
+            **recorder.summary(),
         ),
     }
 
@@ -323,8 +336,9 @@ async def reviewer_node(state: RequestState) -> dict[str, Any]:
             RuntimeError("review requires a draft, an analysis and a legal position"),
         )
 
+    recorder = ModelRecorder()
     try:
-        review = await review_draft(draft, analysis, position)
+        review = await review_draft(draft, analysis, position, recorder=recorder)
     except Exception as error:
         return failed(Actor.REVIEWER, "review_failed", error)
 
@@ -343,6 +357,7 @@ async def reviewer_node(state: RequestState) -> dict[str, Any]:
             revising=revising,
             revisions_exhausted=exhausted,
             prompt=review.prompt_identifier,
+            **recorder.summary(),
         ),
     }
 

@@ -29,7 +29,8 @@ from rti_engine.agents.prompts import (
 from rti_engine.agents.regulatory import RegulatoryPosition
 from rti_engine.agents.tools import ToolCallError, call_tool
 from rti_engine.analytics.inference import GapVerdict, classify_gap
-from rti_engine.llm.factory import ModelRole, get_structured_model
+from rti_engine.llm.factory import ModelRole, get_structured_model, with_recorder
+from rti_engine.llm.served import ModelRecorder
 from rti_engine.mcp.client import KNOWLEDGE, tool_session
 
 
@@ -485,6 +486,7 @@ async def draft_response(
     position: RegulatoryPosition,
     pay_setting_criteria: str | None = None,
     revision_feedback: str | None = None,
+    recorder: ModelRecorder | None = None,
 ) -> DraftLetter:
     """Draft the response to one request.
 
@@ -513,7 +515,7 @@ async def draft_response(
     )
 
     model = get_structured_model(ModelRole.REASONING, DraftLetter)
-    letter = await model.ainvoke(rendered)
+    letter = await model.ainvoke(rendered, config=with_recorder(recorder) if recorder else None)
 
     if not isinstance(letter, DraftLetter):
         raise DraftingError("drafting model did not return a letter")

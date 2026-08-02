@@ -32,7 +32,8 @@ from rti_engine.agents.tools import (
     format_passages,
     result_text,
 )
-from rti_engine.llm.factory import ModelRole, get_structured_model
+from rti_engine.llm.factory import ModelRole, get_structured_model, with_recorder
+from rti_engine.llm.served import ModelRecorder
 from rti_engine.mcp.client import KNOWLEDGE, tool_session
 
 RIGHT_TO_INFORMATION_ARTICLE = 7
@@ -261,7 +262,11 @@ def check_transposition_agrees(
 
 
 async def establish_position(
-    employee_id: str, tier: str, jurisdiction: str, request_text: str
+    employee_id: str,
+    tier: str,
+    jurisdiction: str,
+    request_text: str,
+    recorder: ModelRecorder | None = None,
 ) -> RegulatoryPosition:
     """Determine the legal basis for responding to one request."""
     if not request_text.strip():
@@ -278,7 +283,7 @@ async def establish_position(
     )
 
     model = get_structured_model(ModelRole.REASONING, RegulatoryPosition)
-    position = await model.ainvoke(rendered)
+    position = await model.ainvoke(rendered, config=with_recorder(recorder) if recorder else None)
 
     if not isinstance(position, RegulatoryPosition):
         raise RegulatoryError("regulatory model did not return a position")

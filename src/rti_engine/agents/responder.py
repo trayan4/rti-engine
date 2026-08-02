@@ -25,7 +25,8 @@ from rti_engine.agents.prompts import (
     Prompt,
 )
 from rti_engine.agents.tools import ToolCallError, call_tool, format_passages
-from rti_engine.llm.factory import ModelRole, get_structured_model
+from rti_engine.llm.factory import ModelRole, get_structured_model, with_recorder
+from rti_engine.llm.served import ModelRecorder
 from rti_engine.mcp.client import ANALYTICS, KNOWLEDGE, tool_session
 
 CURRENCY_PLACES = 2
@@ -183,10 +184,12 @@ def own_record_facts(record: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-async def _generate(prompt: Prompt, **values: Any) -> DraftLetter:
+async def _generate(prompt: Prompt, recorder: ModelRecorder | None, **values: Any) -> DraftLetter:
     """Render a prompt and produce a response from it."""
     model = get_structured_model(ModelRole.REASONING, DraftLetter)
-    letter = await model.ainvoke(prompt.render(**values))
+    letter = await model.ainvoke(
+        prompt.render(**values), config=with_recorder(recorder) if recorder else None
+    )
 
     if not isinstance(letter, DraftLetter):
         raise ResponseError(f"{prompt.name} did not return a response")
@@ -194,7 +197,10 @@ async def _generate(prompt: Prompt, **values: Any) -> DraftLetter:
 
 
 async def answer_informational(
-    employee_id: str, request_text: str, jurisdiction: str
+    employee_id: str,
+    request_text: str,
+    jurisdiction: str,
+    recorder: ModelRecorder | None = None,
 ) -> DraftLetter:
     """Answer a Tier 0 request from the corpus alone."""
     if not request_text.strip():
@@ -204,13 +210,19 @@ async def answer_informational(
 
     return await _generate(
         INFORMATIONAL_PROMPT,
+        recorder,
         request_text=request_text,
         jurisdiction=jurisdiction,
         retrieved_context=retrieved,
     )
 
 
-async def answer_own_data(employee_id: str, request_text: str, jurisdiction: str) -> DraftLetter:
+async def answer_own_data(
+    employee_id: str,
+    request_text: str,
+    jurisdiction: str,
+    recorder: ModelRecorder | None = None,
+) -> DraftLetter:
     """Answer a Tier 1 request from the requester's own record."""
     if not request_text.strip():
         raise ResponseError("request text is empty")
@@ -220,6 +232,7 @@ async def answer_own_data(employee_id: str, request_text: str, jurisdiction: str
 
     return await _generate(
         OWN_DATA_PROMPT,
+        recorder,
         request_text=request_text,
         jurisdiction=jurisdiction,
         own_record=json.dumps(own_record_facts(record), indent=2),

@@ -29,7 +29,8 @@ from rti_engine.agents.analyst import GroupAnalysis
 from rti_engine.agents.drafter import DraftLetter, build_fact_sheet, build_legal_position
 from rti_engine.agents.prompts import GROUNDING_RULES, Prompt
 from rti_engine.agents.regulatory import RegulatoryPosition
-from rti_engine.llm.factory import ModelRole, get_structured_model
+from rti_engine.llm.factory import ModelRole, get_structured_model, with_recorder
+from rti_engine.llm.served import ModelRecorder
 
 Severity = Literal["blocking", "advisory"]
 
@@ -240,6 +241,7 @@ async def review_draft(
     letter: DraftLetter,
     analysis: GroupAnalysis,
     position: RegulatoryPosition,
+    recorder: ModelRecorder | None = None,
 ) -> ReviewResult:
     """Review one draft against the facts and legal position it came from."""
     rendered = REVIEWER_PROMPT.render(
@@ -250,7 +252,7 @@ async def review_draft(
     )
 
     model = get_structured_model(ModelRole.REVIEW, ReviewResult)
-    result = await model.ainvoke(rendered)
+    result = await model.ainvoke(rendered, config=with_recorder(recorder) if recorder else None)
 
     if not isinstance(result, ReviewResult):
         raise ReviewError("review model did not return a result")

@@ -17,9 +17,56 @@ from typing import Any
 from uuid import UUID
 
 from langchain_core.callbacks import AsyncCallbackHandler
+from langchain_core.outputs import LLMResult
 from pydantic import BaseModel, ConfigDict
 
 UNKNOWN_MODEL = "unknown"
+
+USD_PER_MILLION: dict[str, tuple[float, float]] = {
+    "gpt-5.6-sol": (5.0, 30.0),
+    "gpt-5.6-terra": (2.5, 15.0),
+    "gpt-5.6-luna": (1.0, 6.0),
+    "claude-sonnet-5": (3.0, 15.0),
+    "llama-3.3-70b-versatile": (0.59, 0.79),
+}
+"""Input and output price per million tokens, by model.
+
+Approximate and manually maintained, so treat the figure as an estimate
+for budgeting rather than an invoice. What matters is that a request
+which fell back to a costlier provider shows the difference, instead of
+the change being visible only in the audit trail.
+"""
+
+DEFAULT_USD_PER_MILLION = (3.0, 15.0)
+"""Used for a model with no recorded rate.
+
+Deliberately not zero: an unpriced model must not look free, or adding
+one would silently disable the budget.
+"""
+
+TOKENS_PER_MILLION = 1_000_000
+
+
+class TokenUsage(BaseModel):
+    """What one call consumed."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    model: str
+    input_tokens: int = 0
+    output_tokens: int = 0
+
+    @property
+    def total_tokens(self) -> int:
+        return self.input_tokens + self.output_tokens
+
+    @property
+    def cost_usd(self) -> float:
+        """Estimated cost, at this model's rate."""
+        input_rate, output_rate = USD_PER_MILLION.get(self.model, DEFAULT_USD_PER_MILLION)
+        return (
+            self.input_tokens * input_rate + self.output_tokens * output_rate
+        ) / TOKENS_PER_MILLION
 
 
 class ServedModel(BaseModel):
@@ -42,6 +89,7 @@ class ModelRecorder(AsyncCallbackHandler):
 
     def __init__(self) -> None:
         self.calls: list[ServedModel] = []
+        self.usage: list[TokenUsage] = []
         self._attempt = 0
 
     def _record(self, serialized: dict[str, Any], kwargs: dict[str, Any]) -> None:
@@ -70,6 +118,25 @@ class ModelRecorder(AsyncCallbackHandler):
     ) -> None:
         self._record(serialized, kwargs)
 
+    async def on_llm_end(
+        self,
+        response: LLMResult,
+        *,
+        run_id: UUID,
+        parent_run_id: UUID | None = None,
+        **kwargs: Any,
+    ) -> None:
+        """Record what the call that just finished consumed."""
+        self.usage.append(_token_usage(self.served_by, response))
+
+    @property
+    def total_tokens(self) -> int:
+        return sum(item.total_tokens for item in self.usage)
+
+    @property
+    def cost_usd(self) -> float:
+        return sum(item.cost_usd for item in self.usage)
+
     @property
     def served_by(self) -> str:
         """The model that produced the answer: the last one attempted."""
@@ -87,6 +154,8 @@ class ModelRecorder(AsyncCallbackHandler):
             "attempts": len(self.calls),
             "used_fallback": self.used_fallback,
             "chain": [call.model for call in self.calls],
+            "tokens": self.total_tokens,
+            "cost_usd": round(self.cost_usd, 6),
         }
 
 
@@ -112,3 +181,33 @@ def _model_name(serialized: dict[str, Any], kwargs: dict[str, Any]) -> str:
 
     name = serialized.get("name")
     return str(name) if name else UNKNOWN_MODEL
+
+
+def _token_usage(model: str, response: LLMResult) -> TokenUsage:
+    """Read token counts from a completed call.
+
+    Providers report usage in more than one place, so both are tried.
+    Returning zeros rather than raising is deliberate: a provider that
+    reports nothing must not fail the request it just answered, and the
+    budget errs toward letting work through rather than blocking it on
+    missing telemetry.
+    """
+    output = response.llm_output or {}
+    usage = output.get("token_usage") or output.get("usage") or {}
+
+    if not usage:
+        for generations in response.generations:
+            for generation in generations:
+                message = getattr(generation, "message", None)
+                metadata = getattr(message, "usage_metadata", None)
+                if metadata:
+                    usage = dict(metadata)
+                    break
+            if usage:
+                break
+
+    return TokenUsage(
+        model=model,
+        input_tokens=int(usage.get("input_tokens") or usage.get("prompt_tokens") or 0),
+        output_tokens=int(usage.get("output_tokens") or usage.get("completion_tokens") or 0),
+    )

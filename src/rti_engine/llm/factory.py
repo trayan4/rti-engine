@@ -208,3 +208,16 @@ def with_recorder(recorder: AsyncCallbackHandler) -> RunnableConfig:
     and shared: a recorder bound to one would mix requests together.
     """
     return RunnableConfig(callbacks=[recorder])
+
+
+def get_judge_model() -> BaseChatModel:
+    """Return a model for scoring another model's output.
+
+    The review role, and deliberately without fallbacks. A judge that
+    quietly fell back to the drafter's own vendor would be scoring work
+    from the family that produced it, which is the arrangement the review
+    role exists to avoid — and a score is not urgent enough to be worth
+    degrading to get one.
+    """
+    primary, _ = _role_models(ModelRole.REVIEW)
+    return primary

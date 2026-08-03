@@ -214,9 +214,29 @@ def _format_graph(status: Any, provisions: Any, gaps: Any, policy: Any) -> str:
     )
 
 
+class RegulatoryEvidence(BaseModel):
+    """What the position was reasoned from.
+
+    Returned so a caller can score the reasoning against the passages it
+    actually used. Re-retrieving for an evaluation would score a second
+    call rather than the one that produced the answer.
+    """
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    passages: list[dict[str, Any]]
+    retrieved_context: str
+    graph_context: str
+    status: dict[str, Any]
+
+    @property
+    def passage_texts(self) -> list[str]:
+        return [str(item.get("text", "")) for item in self.passages]
+
+
 async def _gather_context(
     tools: dict[str, BaseTool], jurisdiction: str, request_text: str
-) -> tuple[str, str, dict[str, Any]]:
+) -> RegulatoryEvidence:
     """Retrieve everything the position depends on, before any reasoning."""
     passages = await _call(
         tools,
@@ -236,10 +256,11 @@ async def _gather_context(
     if not isinstance(status, dict):
         raise RegulatoryError("jurisdiction status did not return an object")
 
-    return (
-        _format_passages(passages),
-        _format_graph(status, provisions, gaps, policy),
-        status,
+    return RegulatoryEvidence(
+        passages=passages,
+        retrieved_context=format_passages(passages),
+        graph_context=_format_graph(status, provisions, gaps, policy),
+        status=status,
     )
 
 
@@ -273,13 +294,13 @@ async def establish_position(
         raise RegulatoryError("request text is empty")
 
     async with tool_session(employee_id, tier, servers=[KNOWLEDGE]) as tools:
-        retrieved, graph, status = await _gather_context(tools, jurisdiction, request_text)
+        evidence = await _gather_context(tools, jurisdiction, request_text)
 
     rendered = REGULATORY_PROMPT.render(
         jurisdiction=jurisdiction,
         request_text=request_text,
-        retrieved_context=retrieved,
-        graph_context=graph,
+        retrieved_context=evidence.retrieved_context,
+        graph_context=evidence.graph_context,
     )
 
     model = get_structured_model(ModelRole.REASONING, RegulatoryPosition)
@@ -293,5 +314,17 @@ async def establish_position(
     # tool schemas reject downstream — and a wrong country here would send
     # the whole response to the wrong body of law.
     checked = position.model_copy(update={"jurisdiction": jurisdiction})
-    check_transposition_agrees(checked, status, jurisdiction)
+    check_transposition_agrees(checked, evidence.status, jurisdiction)
     return checked
+
+
+async def gather_evidence(
+    employee_id: str, tier: str, jurisdiction: str, request_text: str
+) -> RegulatoryEvidence:
+    """Retrieve what a position would be reasoned from, without reasoning.
+
+    Used by the evaluation harness to score retrieval quality against the
+    same passages the agent would receive.
+    """
+    async with tool_session(employee_id, tier, servers=[KNOWLEDGE]) as tools:
+        return await _gather_context(tools, jurisdiction, request_text)

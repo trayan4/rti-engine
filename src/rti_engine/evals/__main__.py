@@ -13,6 +13,7 @@ import asyncio
 import json
 import sys
 
+from rti_engine.evals.retrieval_quality import run_quality_suite
 from rti_engine.evals.runner import run_scenario_suite, run_tier_suite
 
 
@@ -56,7 +57,25 @@ async def scenarios(names: list[str] | None) -> bool:
     return report.passed
 
 
-SUITES = {"routing": routing, "scenarios": scenarios}
+async def quality(names: list[str] | None) -> bool:
+    """Score the regulatory agent's retrieval and its use of it."""
+    report = await run_quality_suite(names=names)
+
+    for outcome in report.outcomes:
+        mark = "pass" if outcome.passed else "FAIL"
+        print(f"\n  {mark}  {outcome.name} ({outcome.passages_retrieved} passages)")
+        for score in outcome.scores:
+            print(f"        {score.key:22s} {score.score:.2f}")
+        for failure in outcome.unscored:
+            print(f"        unscored: {failure[:100]}")
+        if outcome.error:
+            print(f"        error: {outcome.error[:120]}")
+
+    print(f"\n{json.dumps(report.summary(), indent=2)}")
+    return report.passed
+
+
+SUITES = {"routing": routing, "scenarios": scenarios, "quality": quality}
 
 
 def main() -> None:

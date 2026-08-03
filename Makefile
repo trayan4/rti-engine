@@ -35,3 +35,6 @@ eval-routing:
 
 eval-scenarios:
 	uv run python -m rti_engine.evals scenarios
+
+eval-quality:
+	uv run python -m rti_engine.evals quality

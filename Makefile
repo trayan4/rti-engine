@@ -1,4 +1,4 @@
-.PHONY: install lint format typecheck test check reqs data ingest graph eval-routing eval-scenarios migrate
+.PHONY: install lint format typecheck test check reqs data ingest graph eval-routing eval-scenarios migrate api ui
 
 install:
 	uv sync
@@ -42,3 +42,9 @@ eval-quality:
 migrate:
 	uv run alembic upgrade head
 	uv run python -c "import asyncio; from rti_engine.agents.checkpointing import setup_checkpointer; asyncio.run(setup_checkpointer())"
+
+api:
+	uv run uvicorn rti_engine.api.app:app --reload
+
+ui:
+	uv run streamlit run src/rti_engine/ui/app.py

@@ -15,6 +15,8 @@ from typing import Any
 
 from langchain_core.tools import BaseTool
 
+from rti_engine.observability.otel import span
+
 TOOL_ERROR_PREFIX = "Error calling tool"
 
 
@@ -42,14 +44,27 @@ async def call_tool(tools: dict[str, BaseTool], name: str, **arguments: Any) -> 
     if tool is None:
         raise ToolCallError(f"tool {name!r} is not available")
 
-    text = result_text(await tool.ainvoke(arguments))
-    if text.startswith(TOOL_ERROR_PREFIX):
-        raise ToolCallError(text)
+    # Traced from the caller rather than inside the server. The context is
+    # propagated across the process boundary, so server-side spans would
+    # join this trace if the servers were instrumented — but a call timed
+    # from here already answers the question worth asking, which is where
+    # a request spent its time.
+    with span(f"tool.{name}", **{"rti.tool": name}) as current:
+        text = result_text(await tool.ainvoke(arguments))
 
-    try:
-        return json.loads(text)
-    except json.JSONDecodeError as error:
-        raise ToolCallError(f"{name} returned unparseable output: {text[:200]}") from error
+        if text.startswith(TOOL_ERROR_PREFIX):
+            # Marked so a refusal is distinguishable from a fault. Both
+            # end the call; only one means something is wrong.
+            current.set_attribute("rti.refused", True)
+            raise ToolCallError(text)
+
+        try:
+            parsed = json.loads(text)
+        except json.JSONDecodeError as error:
+            raise ToolCallError(f"{name} returned unparseable output: {text[:200]}") from error
+
+        current.set_attribute("rti.result_bytes", len(text))
+        return parsed
 
 
 def format_passages(passages: list[dict[str, Any]]) -> str:

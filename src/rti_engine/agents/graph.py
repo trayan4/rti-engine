@@ -20,7 +20,7 @@ a human decision.
 """
 
 from collections.abc import Callable
-from typing import Any, Literal
+from typing import Any, Literal, cast
 
 from langgraph.graph import END, START, StateGraph
 from langgraph.graph.state import CompiledStateGraph
@@ -50,12 +50,14 @@ from rti_engine.agents.state import (
     Actor,
     RequestState,
     audited,
+    current_tier,
     failed,
 )
 from rti_engine.db.models import AutonomyTier, RequestStatus
 from rti_engine.guardrails.numbers import validate_numbers
 from rti_engine.guardrails.pii import scan
 from rti_engine.llm.served import ModelRecorder
+from rti_engine.observability.otel import span
 from rti_engine.observability.tracing import enable_tracing
 
 TierNode = Literal["respond_informational", "respond_own_data", "analyst"]
@@ -618,6 +620,33 @@ async def degraded_node(state: RequestState) -> dict[str, Any]:
     }
 
 
+def _traced[NodeT: Callable[..., Any]](name: str, node: NodeT) -> NodeT:
+    """Wrap a node so its work appears as a span.
+
+    Applied at assembly rather than inside each node, so a node added
+    later is traced without anyone remembering to instrument it.
+    """
+
+    async def wrapped(state: RequestState) -> dict[str, Any]:
+        tier = current_tier(state)
+        with span(
+            f"node.{name}",
+            **{
+                "rti.request_id": state.get("request_id", ""),
+                "rti.tier": tier.value if tier else "unclassified",
+                "rti.revision": state.get("revision_count", 0),
+            },
+        ) as current:
+            update: dict[str, Any] = await node(state)
+            if errors := update.get("errors"):
+                current.set_attribute("rti.error", str(errors[0])[:200])
+            return update
+
+    # Returned as the type it was given, so the graph's node protocol sees
+    # what it saw before the wrapper existed.
+    return cast(NodeT, wrapped)
+
+
 def build_graph(checkpointer: Any = None) -> CompiledStateGraph[Any, Any, Any]:
     """Assemble and compile the request graph.
 
@@ -643,11 +672,11 @@ def build_graph(checkpointer: Any = None) -> CompiledStateGraph[Any, Any, Any]:
         (DRAFTER, drafter_node, NODE_TIMEOUT),
         (REVIEWER, reviewer_node, NODE_TIMEOUT),
     ):
-        builder.add_node(name, node, retry_policy=NODE_RETRY_POLICY, timeout=timeout)
+        builder.add_node(name, _traced(name, node), retry_policy=NODE_RETRY_POLICY, timeout=timeout)
 
-    builder.add_node(VALIDATOR, validator_node)
-    builder.add_node(APPROVAL, approval_node)
-    builder.add_node(DEGRADED, degraded_node)
+    builder.add_node(APPROVAL, _traced(APPROVAL, approval_node))
+    builder.add_node(VALIDATOR, _traced(VALIDATOR, validator_node))
+    builder.add_node(DEGRADED, _traced(DEGRADED, degraded_node))
 
     builder.add_edge(START, INTAKE)
     builder.add_conditional_edges(

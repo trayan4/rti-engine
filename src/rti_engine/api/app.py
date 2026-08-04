@@ -18,6 +18,7 @@ from contextlib import asynccontextmanager
 from typing import Any, Literal
 
 from fastapi import BackgroundTasks, FastAPI, HTTPException, status
+from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
 
 from rti_engine.api import service
 from rti_engine.api.schemas import (
@@ -28,6 +29,7 @@ from rti_engine.api.schemas import (
     SubmitRequest,
 )
 from rti_engine.api.security import CurrentPrincipal, CurrentReviewer
+from rti_engine.observability.otel import configure_tracing
 from rti_engine.observability.tracing import enable_tracing, tracing_status
 
 DEFAULT_JURISDICTION: Literal["DE", "FR", "ES"] = "DE"
@@ -42,6 +44,8 @@ and this should read from there rather than assume.
 async def lifespan(_: FastAPI) -> AsyncGenerator[None]:
     """Turn tracing on before any request runs."""
     enable_tracing()
+    if configure_tracing().enabled:
+        FastAPIInstrumentor.instrument_app(app)
     yield
 
 

@@ -54,10 +54,10 @@ jobs:
       NEO4J_PASSWORD: rti_local_dev
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Install uv
-        uses: astral-sh/setup-uv@v5
+        uses: astral-sh/setup-uv@v6
         with:
           enable-cache: true
 
@@ -78,7 +78,7 @@ jobs:
         run: make data
 
       - name: Apply migrations
-        run: uv run alembic upgrade head
+        run: make migrate
 
       - name: Build the knowledge graph
         run: make graph
@@ -113,10 +113,10 @@ jobs:
       GROQ_MODEL: ${{ vars.GROQ_MODEL }}
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Install uv
-        uses: astral-sh/setup-uv@v5
+        uses: astral-sh/setup-uv@v6
         with:
           enable-cache: true
 

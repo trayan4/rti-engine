@@ -19,9 +19,14 @@ from typing import Any
 
 from langchain_core.tools import BaseTool, StructuredTool
 from langchain_mcp_adapters.client import MultiServerMCPClient
-from langchain_mcp_adapters.sessions import Connection, StdioConnection
+from langchain_mcp_adapters.sessions import (
+    Connection,
+    StdioConnection,
+    StreamableHttpConnection,
+)
 from langchain_mcp_adapters.tools import load_mcp_tools
 
+from rti_engine.config.settings import get_settings
 from rti_engine.observability.otel import propagation_env
 
 ANALYTICS_SERVER = "rti_engine.mcp.analytics_server"
@@ -42,25 +47,41 @@ authenticated principal and nothing an agent produces can change it.
 
 
 def server_connections() -> dict[str, Connection]:
-    """Describe how to launch each server.
+    """Describe how to reach each server.
 
-    The current interpreter is used rather than a launcher command, so the
-    servers run in the same virtual environment as their caller regardless
-    of how that caller was started.
+    Two modes for the same servers. Locally they are subprocesses spawned
+    over stdio, which needs no ports and dies with its parent. In a
+    deployment they are separate services reached over HTTP, because a
+    pipe does not cross a container boundary.
+
+    Which mode applies is decided by whether the URLs are configured, so
+    nothing has to be told which environment it is in.
     """
+    settings = get_settings()
+
+    if settings.analytics_mcp_url and settings.knowledge_mcp_url:
+        return {
+            ANALYTICS: StreamableHttpConnection(
+                transport="streamable_http", url=settings.analytics_mcp_url
+            ),
+            KNOWLEDGE: StreamableHttpConnection(
+                transport="streamable_http", url=settings.knowledge_mcp_url
+            ),
+        }
+
     # The trace context travels as environment variables. A subprocess
     # started without it begins a fresh trace, and the request's picture
     # comes apart at exactly the boundary worth seeing across.
     env = {**os.environ, **propagation_env()}
 
     return {
-        "analytics": StdioConnection(
+        ANALYTICS: StdioConnection(
             transport="stdio",
             command=sys.executable,
             args=["-m", ANALYTICS_SERVER],
             env=env,
         ),
-        "knowledge": StdioConnection(
+        KNOWLEDGE: StdioConnection(
             transport="stdio",
             command=sys.executable,
             args=["-m", KNOWLEDGE_SERVER],

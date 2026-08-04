@@ -14,6 +14,7 @@ them.
 import logging
 from typing import Any
 
+from rti_engine.config.settings import get_settings
 from rti_engine.db.authz import AuthorizationError
 from rti_engine.observability.otel import adopt_parent_context
 
@@ -48,6 +49,18 @@ def prepare_server() -> None:
 
 
 def run(server: Any) -> None:
-    """Prepare and start a server."""
+    """Prepare and start a server on the configured transport.
+
+    Stdio when spawned as a subprocess, HTTP when deployed as a service.
+    The server binds every interface in HTTP mode because a container's
+    own address is not known until it starts, and reaching it is the
+    platform's job rather than the process's.
+    """
     prepare_server()
+    settings = get_settings()
+
+    if settings.mcp_transport == "http":
+        server.run(transport="http", host="0.0.0.0", port=settings.mcp_port)  # noqa: S104
+        return
+
     server.run()

@@ -54,6 +54,17 @@ class Settings(BaseSettings):
     otel_endpoint: str | None = None
     otel_service_name: str = "rti-engine"
 
+    analytics_mcp_url: str | None = None
+    knowledge_mcp_url: str | None = None
+    """Where the MCP servers are reachable, when they are separate services.
+
+    Unset locally, where they are spawned as subprocesses over stdio. Set
+    in a deployment, where a pipe cannot cross a container boundary.
+    """
+
+    mcp_transport: Literal["stdio", "http"] = "stdio"
+    mcp_port: int = 8080
+
     @property
     def azure_openai_base_url(self) -> str | None:
         """The v1 API base URL, derived from the configured endpoint.

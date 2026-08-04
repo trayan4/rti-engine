@@ -11,6 +11,7 @@ agent invocation.
 """
 
 import copy
+import os
 import sys
 from collections.abc import AsyncGenerator, Sequence
 from contextlib import AsyncExitStack, asynccontextmanager
@@ -20,6 +21,8 @@ from langchain_core.tools import BaseTool, StructuredTool
 from langchain_mcp_adapters.client import MultiServerMCPClient
 from langchain_mcp_adapters.sessions import Connection, StdioConnection
 from langchain_mcp_adapters.tools import load_mcp_tools
+
+from rti_engine.observability.otel import propagation_env
 
 ANALYTICS_SERVER = "rti_engine.mcp.analytics_server"
 KNOWLEDGE_SERVER = "rti_engine.mcp.knowledge_server"
@@ -45,12 +48,23 @@ def server_connections() -> dict[str, Connection]:
     servers run in the same virtual environment as their caller regardless
     of how that caller was started.
     """
+    # The trace context travels as environment variables. A subprocess
+    # started without it begins a fresh trace, and the request's picture
+    # comes apart at exactly the boundary worth seeing across.
+    env = {**os.environ, **propagation_env()}
+
     return {
         "analytics": StdioConnection(
-            transport="stdio", command=sys.executable, args=["-m", ANALYTICS_SERVER]
+            transport="stdio",
+            command=sys.executable,
+            args=["-m", ANALYTICS_SERVER],
+            env=env,
         ),
         "knowledge": StdioConnection(
-            transport="stdio", command=sys.executable, args=["-m", KNOWLEDGE_SERVER]
+            transport="stdio",
+            command=sys.executable,
+            args=["-m", KNOWLEDGE_SERVER],
+            env=env,
         ),
     }
 

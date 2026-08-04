@@ -173,4 +173,6 @@ def list_provisions_in_jurisdiction(jurisdiction: Jurisdiction) -> list[dict[str
 
 
 if __name__ == "__main__":
-    mcp.run()
+    from rti_engine.mcp.startup import run
+
+    run(mcp)

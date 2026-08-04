@@ -319,4 +319,6 @@ def optimize_remediation(
 
 
 if __name__ == "__main__":
-    mcp.run()
+    from rti_engine.mcp.startup import run
+
+    run(mcp)

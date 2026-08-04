@@ -1,0 +1,130 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+env:
+  PYTHON_VERSION: "3.13"
+
+jobs:
+  check:
+    name: Lint, types, and tests
+    runs-on: ubuntu-latest
+
+    # Postgres and Neo4j run as service containers so the tests that need
+    # them are exercised rather than skipped. Pinecone and the model
+    # providers are not available here, and the tests that need those skip
+    # themselves — they run in the suites below, where a key is present.
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: rti
+          POSTGRES_PASSWORD: rti_local_dev
+          POSTGRES_DB: rti_engine
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U rti -d rti_engine"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+      neo4j:
+        image: neo4j:5-community
+        env:
+          NEO4J_AUTH: neo4j/rti_local_dev
+        ports:
+          - 7474:7474
+          - 7687:7687
+        options: >-
+          --health-cmd "wget -q -O /dev/null http://localhost:7474 || exit 1"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 20
+
+    env:
+      POSTGRES_DSN: postgresql://rti:rti_local_dev@localhost:5432/rti_engine
+      NEO4J_URI: bolt://localhost:7687
+      NEO4J_USERNAME: neo4j
+      NEO4J_PASSWORD: rti_local_dev
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Set up Python
+        run: uv python install ${{ env.PYTHON_VERSION }}
+
+      - name: Install dependencies
+        run: uv sync --all-extras
+
+      # Installed into the venv rather than declared in pyproject.toml, so
+      # a fresh checkout has no way to know it is needed.
+      - name: Download the language model
+        run: uv run python -m spacy download en_core_web_lg
+
+      # The dataset is generated from a seed rather than committed, so it
+      # has to be built before anything that reads it.
+      - name: Generate the dataset
+        run: make data
+
+      - name: Apply migrations
+        run: uv run alembic upgrade head
+
+      - name: Build the knowledge graph
+        run: make graph
+
+      - name: Lint
+        run: uv run ruff check .
+
+      - name: Type check
+        run: uv run mypy src
+
+      - name: Test
+        run: uv run pytest
+
+  routing:
+    name: Tier routing
+    runs-on: ubuntu-latest
+    needs: check
+    if: github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'
+
+    # The gate that matters most: a request routed below its required tier
+    # discloses data without the review it needed. Cheap enough to run on
+    # every pull request.
+    env:
+      AZURE_OPENAI_ENDPOINT: ${{ secrets.AZURE_OPENAI_ENDPOINT }}
+      AZURE_OPENAI_API_KEY: ${{ secrets.AZURE_OPENAI_API_KEY }}
+      AZURE_OPENAI_CHAT_DEPLOYMENT: ${{ vars.AZURE_OPENAI_CHAT_DEPLOYMENT }}
+      AZURE_OPENAI_MINI_DEPLOYMENT: ${{ vars.AZURE_OPENAI_MINI_DEPLOYMENT }}
+      AZURE_OPENAI_EMBEDDING_DEPLOYMENT: ${{ vars.AZURE_OPENAI_EMBEDDING_DEPLOYMENT }}
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      ANTHROPIC_MODEL: ${{ vars.ANTHROPIC_MODEL }}
+      GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+      GROQ_MODEL: ${{ vars.GROQ_MODEL }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Set up Python
+        run: uv python install ${{ env.PYTHON_VERSION }}
+
+      - name: Install dependencies
+        run: uv sync --all-extras
+
+      - name: Run the routing suite
+        run: make eval-routing

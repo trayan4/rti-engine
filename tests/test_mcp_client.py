@@ -99,3 +99,59 @@ async def test_refusals_arrive_as_content_not_exceptions() -> None:
     result = await tools["get_own_pay_record"].ainvoke({})
 
     assert "Error calling tool" in result_text(result)
+
+
+# --- transport selection ---
+
+
+def test_subprocesses_are_used_when_no_urls_are_configured(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The local path: a pipe, no ports, and the servers die with their parent."""
+    from rti_engine.config import settings as settings_module
+    from rti_engine.mcp.client import server_connections
+
+    settings_module.get_settings.cache_clear()
+    monkeypatch.setenv("ANALYTICS_MCP_URL", "")
+    monkeypatch.setenv("KNOWLEDGE_MCP_URL", "")
+
+    connections = server_connections()
+    settings_module.get_settings.cache_clear()
+
+    assert all(item["transport"] == "stdio" for item in connections.values())
+
+
+def test_http_is_used_when_urls_are_configured(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The deployed path: a pipe does not cross a container boundary."""
+    from rti_engine.config import settings as settings_module
+    from rti_engine.mcp.client import ANALYTICS, KNOWLEDGE, server_connections
+
+    settings_module.get_settings.cache_clear()
+    monkeypatch.setenv("ANALYTICS_MCP_URL", "http://analytics/mcp")
+    monkeypatch.setenv("KNOWLEDGE_MCP_URL", "http://knowledge/mcp")
+
+    connections = server_connections()
+    settings_module.get_settings.cache_clear()
+
+    assert connections[ANALYTICS]["transport"] == "streamable_http"
+    assert connections[KNOWLEDGE]["url"] == "http://knowledge/mcp"
+
+
+def test_one_url_alone_does_not_switch_transport(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Half-configured is a misconfiguration; falling back is safer than
+    reaching one server over HTTP and spawning the other."""
+    from rti_engine.config import settings as settings_module
+    from rti_engine.mcp.client import server_connections
+
+    settings_module.get_settings.cache_clear()
+    monkeypatch.setenv("ANALYTICS_MCP_URL", "http://analytics/mcp")
+    monkeypatch.setenv("KNOWLEDGE_MCP_URL", "")
+
+    connections = server_connections()
+    settings_module.get_settings.cache_clear()
+
+    assert all(item["transport"] == "stdio" for item in connections.values())

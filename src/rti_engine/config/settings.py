@@ -51,6 +51,9 @@ class Settings(BaseSettings):
     langsmith_api_key: str | None = None
     langsmith_project: str = "rti-engine"
 
+    otel_endpoint: str | None = None
+    otel_service_name: str = "rti-engine"
+
     @property
     def azure_openai_base_url(self) -> str | None:
         """The v1 API base URL, derived from the configured endpoint.

@@ -132,7 +132,10 @@ module archive 'modules/archive.bicep' = {
   }
 }
 
-module apps 'modules/apps.bicep' = {
+@description('False on the first deployment, before any image has been pushed. The registry and everything else still deploy; only the running apps wait.')
+param deployApps bool = true
+
+module apps 'modules/apps.bicep' = if (deployApps) {
   name: 'apps'
   params: {
     name: resourceName
@@ -152,8 +155,8 @@ module apps 'modules/apps.bicep' = {
   }
 }
 
-output apiUrl string = apps.outputs.apiUrl
-output uiUrl string = apps.outputs.uiUrl
+output apiUrl string = apps.?outputs.apiUrl ?? ''
+output uiUrl string = apps.?outputs.uiUrl ?? ''
 output vaultName string = secrets.outputs.vaultName
 output identityId string = identity.outputs.identityId
 output databaseHost string = database.outputs.host

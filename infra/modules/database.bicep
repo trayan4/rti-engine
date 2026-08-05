@@ -7,7 +7,8 @@
 // spending to look serious.
 
 param name string
-param location string
+@description('East US has no PostgreSQL Flexible Server provisioning capacity for this subscription. Defaults to East US 2, which does.')
+param location string = 'eastus2'
 param tags object
 
 param administratorLogin string

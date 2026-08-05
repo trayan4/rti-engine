@@ -115,7 +115,7 @@ module database 'modules/database.bicep' = {
   name: 'database'
   params: {
     name: resourceName
-    location: location
+    location: 'eastus2'
     tags: tags
     administratorLogin: databaseAdminUser
     administratorPassword: databaseAdminPassword

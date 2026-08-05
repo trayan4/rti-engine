@@ -22,9 +22,6 @@ param identityId string
 param identityClientId string
 
 param vaultUri string
-param databaseHost string
-param databaseName string
-param databaseUser string
 param azureOpenAiEndpoint string
 param pineconeIndex string
 param appInsightsConnectionString string
@@ -67,6 +64,7 @@ var secretNames = [
   'pinecone-api-key'
   'neo4j-password'
   'database-admin-password'
+  'postgres-dsn'
 ]
 
 var sharedSecrets = [
@@ -98,10 +96,7 @@ var sharedEnv = [
   { name: 'NEO4J_PASSWORD', secretRef: 'neo4j-password' }
   { name: 'NEO4J_USERNAME', value: 'neo4j' }
   { name: 'NEO4J_URI', value: 'bolt://neo4j:7687' }
-  { name: 'DATABASE_PASSWORD', secretRef: 'database-admin-password' }
-  { name: 'DATABASE_HOST', value: databaseHost }
-  { name: 'DATABASE_NAME', value: databaseName }
-  { name: 'DATABASE_USER', value: databaseUser }
+  { name: 'POSTGRES_DSN', secretRef: 'postgres-dsn' }
   {
     name: 'APPLICATIONINSIGHTS_CONNECTION_STRING'
     value: appInsightsConnectionString

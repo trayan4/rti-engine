@@ -125,6 +125,21 @@ module database 'modules/database.bicep' = {
   }
 }
 
+// The app reads one POSTGRES_DSN variable, not separate host/user/password
+// fields, so the full connection string is assembled once here — with the
+// password URL-encoded, since a raw '@' or similar breaks the URL just as
+// it did in the migration workflow.
+module postgresDsnSecret 'modules/postgres-dsn-secret.bicep' = {
+  name: 'postgres-dsn-secret'
+  params: {
+    vaultName: secrets.outputs.vaultName
+    databaseAdminUser: databaseAdminUser
+    databaseAdminPassword: databaseAdminPassword
+    databaseHost: database.outputs.host
+    databaseName: database.outputs.databaseName
+  }
+}
+
 module archive 'modules/archive.bicep' = {
   name: 'archive'
   params: {
@@ -149,9 +164,6 @@ module apps 'modules/apps.bicep' = if (deployApps) {
     identityId: identity.outputs.identityId
     identityClientId: identity.outputs.clientId
     vaultUri: secrets.outputs.vaultUri
-    databaseHost: database.outputs.host
-    databaseName: database.outputs.databaseName
-    databaseUser: databaseAdminUser
     azureOpenAiEndpoint: azureOpenAiEndpoint
     pineconeIndex: pineconeIndex
     appInsightsConnectionString: observability.outputs.connectionString

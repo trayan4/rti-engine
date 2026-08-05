@@ -268,11 +268,11 @@ resource api 'Microsoft.App/containerApps@2024-03-01' = {
           env: concat(sharedEnv, [
             {
               name: 'ANALYTICS_MCP_URL'
-              value: 'http://${analyticsMcp.name}/mcp'
+              value: 'http://${analyticsMcp.properties.configuration.ingress.fqdn}/mcp'
             }
             {
               name: 'KNOWLEDGE_MCP_URL'
-              value: 'http://${knowledgeMcp.name}/mcp'
+              value: 'http://${knowledgeMcp.properties.configuration.ingress.fqdn}/mcp'
             }
           ])
           resources: {

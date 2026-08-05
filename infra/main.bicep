@@ -28,6 +28,9 @@ param databaseAdminPassword string
 @description('Azure OpenAI endpoint for the models this system calls.')
 param azureOpenAiEndpoint string
 
+@description('Image tag to deploy. Only used when deployApps is true.')
+param imageTag string = 'latest'
+
 @secure()
 param azureOpenAiApiKey string
 
@@ -152,6 +155,7 @@ module apps 'modules/apps.bicep' = if (deployApps) {
     azureOpenAiEndpoint: azureOpenAiEndpoint
     pineconeIndex: pineconeIndex
     appInsightsConnectionString: observability.outputs.connectionString
+    imageTag: imageTag
   }
 }
 

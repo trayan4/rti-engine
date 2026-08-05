@@ -25,6 +25,8 @@ param vaultUri string
 param azureOpenAiEndpoint string
 param azureOpenAiChatDeployment string
 param azureOpenAiMiniDeployment string
+param anthropicModel string
+param groqModel string
 param pineconeIndex string
 param appInsightsConnectionString string
 
@@ -94,7 +96,9 @@ var sharedEnv = [
   { name: 'AZURE_OPENAI_CHAT_DEPLOYMENT', value: azureOpenAiChatDeployment }
   { name: 'AZURE_OPENAI_MINI_DEPLOYMENT', value: azureOpenAiMiniDeployment }
   { name: 'ANTHROPIC_API_KEY', secretRef: 'anthropic-api-key' }
+  { name: 'ANTHROPIC_MODEL', value: anthropicModel }
   { name: 'GROQ_API_KEY', secretRef: 'groq-api-key' }
+  { name: 'GROQ_MODEL', value: groqModel }
   { name: 'PINECONE_API_KEY', secretRef: 'pinecone-api-key' }
   { name: 'PINECONE_INDEX', value: pineconeIndex }
   { name: 'NEO4J_PASSWORD', secretRef: 'neo4j-password' }

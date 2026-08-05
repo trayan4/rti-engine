@@ -122,6 +122,16 @@ module database 'modules/database.bicep' = {
   }
 }
 
+module archive 'modules/archive.bicep' = {
+  name: 'archive'
+  params: {
+    name: resourceName
+    location: location
+    tags: tags
+    principalId: identity.outputs.principalId
+  }
+}
+
 module apps 'modules/apps.bicep' = {
   name: 'apps'
   params: {

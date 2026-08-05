@@ -43,6 +43,8 @@ jobs:
             deployApps=false
             databaseAdminPassword=${{ secrets.DATABASE_ADMIN_PASSWORD }}
             azureOpenAiEndpoint=${{ vars.AZURE_OPENAI_ENDPOINT }}
+            azureOpenAiChatDeployment=${{ vars.AZURE_OPENAI_CHAT_DEPLOYMENT }}
+            azureOpenAiMiniDeployment=${{ vars.AZURE_OPENAI_MINI_DEPLOYMENT }}
             azureOpenAiApiKey=${{ secrets.AZURE_OPENAI_API_KEY }}
             anthropicApiKey=${{ secrets.ANTHROPIC_API_KEY }}
             groqApiKey=${{ secrets.GROQ_API_KEY }}

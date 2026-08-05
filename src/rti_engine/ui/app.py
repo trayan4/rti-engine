@@ -10,6 +10,7 @@ Run with:
     uv run streamlit run src/rti_engine/ui/app.py
 """
 
+import os
 import time
 from typing import Any
 
@@ -43,7 +44,9 @@ def sidebar() -> ApiClient:
 
     employee_id = st.sidebar.text_input("Employee ID", value="EMP-00001")
     is_reviewer = st.sidebar.checkbox("Sign in as a reviewer", value=False)
-    base_url = st.sidebar.text_input("API", value="http://localhost:8000")
+    base_url = st.sidebar.text_input(
+        "API", value=os.environ.get("RTI_API_URL", "http://localhost:8000")
+    )
 
     client = ApiClient(employee_id, is_reviewer=is_reviewer, base_url=base_url)
 

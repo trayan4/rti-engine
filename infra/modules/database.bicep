@@ -19,7 +19,7 @@ param administratorPassword string
 param databaseName string = 'rti_engine'
 
 @description('Postgres version. Matches what is run locally.')
-param postgresVersion string = '16'
+param postgresVersion string = '15'
 
 @description('Days of point-in-time restore. Seven is the minimum.')
 @minValue(7)

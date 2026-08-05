@@ -9,6 +9,7 @@
 // are spawned over stdio; a pipe does not cross a container boundary, so
 // here they are long-lived HTTP services.
 
+@minLength(13)
 param name string
 param location string
 param tags object
@@ -32,6 +33,13 @@ param appInsightsConnectionString string
 param imageTag string = 'latest'
 
 var image = '${registryServer}/rti-engine:${imageTag}'
+
+// Container app names have a 32-character limit. The full resourceName
+// (prefix plus a 13-char unique suffix) is too long once combined with
+// the longer prefixes like 'ca-mcp-analytics-'. Using only the unique
+// suffix — always the last 13 characters — keeps every name under the
+// limit while preserving the part that actually guarantees uniqueness.
+var uniqueSuffix = substring(name, length(name) - 13, 13)
 
 // Every app runs the same image with a different command, so one build
 // serves all four and they cannot drift apart in dependencies.
@@ -104,7 +112,7 @@ var sharedEnv = [
 // ingestion step, so persisting it would be cost and complexity for
 // something regenerated on every deployment.
 resource neo4j 'Microsoft.App/containerApps@2024-03-01' = {
-  name: 'ca-neo4j-${name}'
+  name: 'ca-neo4j-${uniqueSuffix}'
   location: location
   tags: tags
   identity: identityConfig
@@ -150,7 +158,7 @@ resource neo4j 'Microsoft.App/containerApps@2024-03-01' = {
 }
 
 resource analyticsMcp 'Microsoft.App/containerApps@2024-03-01' = {
-  name: 'ca-mcp-analytics-${name}'
+  name: 'ca-mcp-analytics-${uniqueSuffix}'
   location: location
   tags: tags
   identity: identityConfig
@@ -189,7 +197,7 @@ resource analyticsMcp 'Microsoft.App/containerApps@2024-03-01' = {
 }
 
 resource knowledgeMcp 'Microsoft.App/containerApps@2024-03-01' = {
-  name: 'ca-mcp-knowledge-${name}'
+  name: 'ca-mcp-knowledge-${uniqueSuffix}'
   location: location
   tags: tags
   identity: identityConfig
@@ -226,7 +234,7 @@ resource knowledgeMcp 'Microsoft.App/containerApps@2024-03-01' = {
 }
 
 resource api 'Microsoft.App/containerApps@2024-03-01' = {
-  name: 'ca-api-${name}'
+  name: 'ca-api-${uniqueSuffix}'
   location: location
   tags: tags
   identity: identityConfig
@@ -282,7 +290,7 @@ resource api 'Microsoft.App/containerApps@2024-03-01' = {
 }
 
 resource ui 'Microsoft.App/containerApps@2024-03-01' = {
-  name: 'ca-ui-${name}'
+  name: 'ca-ui-${uniqueSuffix}'
   location: location
   tags: tags
   identity: identityConfig

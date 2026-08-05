@@ -32,9 +32,19 @@ from rti_engine.agents.state import (
 )
 from rti_engine.db.models import AutonomyTier, Request, RequestStatus
 from rti_engine.db.session import session_scope
+from rti_engine.observability.archive import archive_settled_request
 from rti_engine.observability.tracing import run_config
 
 RECURSION_LIMIT = 30
+
+SETTLED_STATUSES = {
+    RequestStatus.COMPLETED,
+    RequestStatus.APPROVED,
+    RequestStatus.REJECTED,
+    RequestStatus.FAILED,
+}
+"""Statuses a request does not leave. Archived once, here, rather than
+anywhere a status might be set — one place to keep correct."""
 
 OPEN_STATUSES = (
     RequestStatus.RECEIVED,
@@ -90,8 +100,14 @@ def create_request(employee_id: str, request_text: str) -> str:
     return request_id
 
 
-def _sync_record(request_id: str, values: RequestState) -> None:
-    """Copy the graph's outcome onto the queryable record."""
+async def _sync_record(request_id: str, values: RequestState) -> None:
+    """Copy the graph's outcome onto the queryable record.
+
+    A settled request is archived here rather than in each caller: this is
+    the one place both a first run and a resumed one already pass through,
+    so a bundle is written exactly once regardless of which path reached
+    the terminal status.
+    """
     status = current_status(values)
     tier = current_tier(values)
 
@@ -104,6 +120,9 @@ def _sync_record(request_id: str, values: RequestState) -> None:
         record.tier = tier
         if status in (RequestStatus.COMPLETED, RequestStatus.REJECTED):
             record.completed_at = datetime.now(UTC)
+
+    if status in SETTLED_STATUSES:
+        await archive_settled_request(values)
 
 
 async def run_request(request_id: str, employee_id: str, jurisdiction: Jurisdiction) -> None:
@@ -121,7 +140,7 @@ async def run_request(request_id: str, employee_id: str, jurisdiction: Jurisdict
             config=_config(request_id),
         )
 
-    _sync_record(request_id, cast(RequestState, result))
+    await _sync_record(request_id, cast(RequestState, result))
 
 
 async def resume_request(
@@ -141,7 +160,7 @@ async def resume_request(
             config=_config(request_id),
         )
 
-    _sync_record(request_id, cast(RequestState, result))
+    await _sync_record(request_id, cast(RequestState, result))
 
 
 def get_record(request_id: str, employee_id: str | None = None) -> Request:

@@ -184,7 +184,10 @@ resource analyticsMcp 'Microsoft.App/containerApps@2024-03-01' = {
           name: 'analytics'
           image: image
           command: ['python', '-m', 'rti_engine.mcp.analytics_server']
-          env: sharedEnv
+          env: concat(sharedEnv, [
+            { name: 'MCP_TRANSPORT', value: 'http' }
+            { name: 'MCP_PORT', value: '8080' }
+          ])
           resources: {
             cpu: json('1.0')
             memory: '2Gi'
@@ -221,7 +224,10 @@ resource knowledgeMcp 'Microsoft.App/containerApps@2024-03-01' = {
           name: 'knowledge'
           image: image
           command: ['python', '-m', 'rti_engine.mcp.knowledge_server']
-          env: sharedEnv
+          env: concat(sharedEnv, [
+            { name: 'MCP_TRANSPORT', value: 'http' }
+            { name: 'MCP_PORT', value: '8080' }
+          ])
           resources: {
             cpu: json('1.0')
             memory: '2Gi'

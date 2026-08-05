@@ -23,6 +23,8 @@ param identityClientId string
 
 param vaultUri string
 param azureOpenAiEndpoint string
+param azureOpenAiChatDeployment string
+param azureOpenAiMiniDeployment string
 param pineconeIndex string
 param appInsightsConnectionString string
 
@@ -89,6 +91,8 @@ var sharedEnv = [
   { name: 'AZURE_CLIENT_ID', value: identityClientId }
   { name: 'AZURE_OPENAI_ENDPOINT', value: azureOpenAiEndpoint }
   { name: 'AZURE_OPENAI_API_KEY', secretRef: 'azure-openai-api-key' }
+  { name: 'AZURE_OPENAI_CHAT_DEPLOYMENT', value: azureOpenAiChatDeployment }
+  { name: 'AZURE_OPENAI_MINI_DEPLOYMENT', value: azureOpenAiMiniDeployment }
   { name: 'ANTHROPIC_API_KEY', secretRef: 'anthropic-api-key' }
   { name: 'GROQ_API_KEY', secretRef: 'groq-api-key' }
   { name: 'PINECONE_API_KEY', secretRef: 'pinecone-api-key' }

@@ -26,7 +26,13 @@ param databaseAdminUser string = 'rtiadmin'
 param databaseAdminPassword string
 
 @description('Azure OpenAI endpoint for the models this system calls.')
-param azureOpenAiEndpoint string
+  param azureOpenAiEndpoint string
+
+@description('Deployment name for the reasoning model (e.g. gpt-5.6-terra).')
+param azureOpenAiChatDeployment string
+
+@description('Deployment name for the classification model (e.g. gpt-5.6-luna).')
+param azureOpenAiMiniDeployment string
 
 @description('Image tag to deploy. Only used when deployApps is true.')
 param imageTag string = 'latest'
@@ -167,6 +173,8 @@ module apps 'modules/apps.bicep' = if (deployApps) {
     azureOpenAiEndpoint: azureOpenAiEndpoint
     pineconeIndex: pineconeIndex
     appInsightsConnectionString: observability.outputs.connectionString
+    azureOpenAiChatDeployment: azureOpenAiChatDeployment
+    azureOpenAiMiniDeployment: azureOpenAiMiniDeployment
     imageTag: imageTag
   }
 }

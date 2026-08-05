@@ -54,6 +54,10 @@ class Settings(BaseSettings):
     otel_endpoint: str | None = None
     otel_service_name: str = "rti-engine"
 
+    applicationinsights_connection_string: str | None = None
+    """Injected by the container app in deployment. Locally absent, so
+    tracing falls back to the OTLP exporter pointed at Jaeger."""
+
     analytics_mcp_url: str | None = None
     knowledge_mcp_url: str | None = None
     """Where the MCP servers are reachable, when they are separate services.

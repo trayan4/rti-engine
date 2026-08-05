@@ -58,13 +58,35 @@ class TracingStatus(BaseModel):
 def configure_tracing() -> TracingStatus:
     """Set up the tracer provider once per process.
 
-    Cached rather than guarded by a flag: a second call would add a second
-    exporter and every span would be sent twice.
+    Application Insights takes priority when its connection string is
+    present, since that only happens in a deployment where it is meant to
+    be the destination. Otherwise falls back to OTLP-to-Jaeger, which is
+    the local path. Cached rather than guarded by a flag: a second call
+    would add a second exporter and every span would be sent twice.
     """
     settings = get_settings()
 
+    if settings.applicationinsights_connection_string:
+        # Imported here, not at module load: this package pulls in its own
+        # opentelemetry-sdk dependency chain, and importing it eagerly means
+        # every module in this project fails to import if that chain is ever
+        # incompatible with the Jaeger exporter's own SDK version — as it was
+        # the first time this was tried.
+        from azure.monitor.opentelemetry import configure_azure_monitor
+
+        # This call configures its own provider end to end — tracer,
+        # processor, exporter — so nothing further is set on the global
+        # trace API here.
+        configure_azure_monitor(
+            connection_string=settings.applicationinsights_connection_string,
+            resource=Resource.create({"service.name": settings.otel_service_name}),
+        )
+        return TracingStatus(
+            enabled=True, endpoint="applicationinsights", service=settings.otel_service_name
+        )
+
     if not settings.otel_endpoint:
-        return TracingStatus(enabled=False, reason="OTEL_ENDPOINT is not set; tracing is off")
+        return TracingStatus(enabled=False, reason="no tracing destination is configured")
 
     provider = TracerProvider(
         resource=Resource.create({"service.name": settings.otel_service_name})

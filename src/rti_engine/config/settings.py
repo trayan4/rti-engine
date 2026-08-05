@@ -60,6 +60,12 @@ class Settings(BaseSettings):
 
     analytics_mcp_url: str | None = None
     knowledge_mcp_url: str | None = None
+
+    archive_account_name: str | None = None
+    archive_container_name: str = "audit-bundles"
+    """Where audit bundles are written. Unset locally — archival is a
+    deployment concern, and nothing here should require Azure to run
+    tests."""
     """Where the MCP servers are reachable, when they are separate services.
 
     Unset locally, where they are spawned as subprocesses over stdio. Set

@@ -166,5 +166,14 @@ jobs:
 
       - name: Apply migrations
         env:
-          POSTGRES_DSN: postgresql://rtiadmin:${{ secrets.DATABASE_ADMIN_PASSWORD }}@${{ steps.db.outputs.host }}:5432/rti_engine?sslmode=require
-        run: make migrate
+          DB_HOST: ${{ steps.db.outputs.host }}
+          DB_PASSWORD: ${{ secrets.DATABASE_ADMIN_PASSWORD }}
+        run: |
+          export POSTGRES_DSN=$(uv run python -c "
+          import os
+          from urllib.parse import quote
+          password = quote(os.environ['DB_PASSWORD'], safe='')
+          host = os.environ['DB_HOST']
+          print(f'postgresql://rtiadmin:{password}@{host}:5432/rti_engine?sslmode=require')
+          ")
+          make migrate

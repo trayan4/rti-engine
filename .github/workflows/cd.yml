@@ -53,6 +53,8 @@ jobs:
             groqApiKey=${{ secrets.GROQ_API_KEY }}
             pineconeApiKey=${{ secrets.PINECONE_API_KEY }}
             neo4jPassword=${{ secrets.NEO4J_PASSWORD }}
+            langsmithApiKey=${{ secrets.LANGSMITH_API_KEY }}
+            langsmithProject=${{ vars.LANGSMITH_PROJECT }}
           failOnStdErr: false
 
       - name: Read the registry name
@@ -140,6 +142,8 @@ jobs:
             groqApiKey=${{ secrets.GROQ_API_KEY }}
             pineconeApiKey=${{ secrets.PINECONE_API_KEY }}
             neo4jPassword=${{ secrets.NEO4J_PASSWORD }}
+            langsmithApiKey=${{ secrets.LANGSMITH_API_KEY }}
+            langsmithProject=${{ vars.LANGSMITH_PROJECT }}
           failOnStdErr: false
 
   migrate:

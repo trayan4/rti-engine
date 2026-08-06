@@ -158,6 +158,21 @@ async def _run_tier_case(case: TierCase, limit: asyncio.Semaphore) -> TierOutcom
                 error=f"{type(error).__name__}: {error}",
             )
 
+    if result.tier is None:
+        # Every case in this catalog is a genuine pay request, so a case
+        # classified as not one is a real failure to report, not a type
+        # mismatch to route around.
+        return TierOutcome(
+            name=case.name,
+            expected=case.expected_tier.value,
+            actual="not_a_pay_request",
+            passed=False,
+            under_routed=False,
+            over_routed=False,
+            escalated_by_floor=False,
+            error="classified as not a pay request",
+        )
+
     actual = result.tier
     return TierOutcome(
         name=case.name,

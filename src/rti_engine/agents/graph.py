@@ -67,6 +67,10 @@ RESPOND_INFORMATIONAL: TierNode = "respond_informational"
 RESPOND_OWN_DATA: TierNode = "respond_own_data"
 ANALYST: TierNode = "analyst"
 
+RESPOND_NOT_APPLICABLE = "respond_not_applicable"
+"""Not part of TIER_NODES: it is reached when there is no tier to route
+on, not by looking one up."""
+
 REGULATORY = "regulatory"
 DRAFTER = "drafter"
 REVIEWER = "reviewer"
@@ -135,7 +139,7 @@ async def intake_node(state: RequestState) -> dict[str, Any]:
         **audited(
             Actor.INTAKE,
             "tier_assigned",
-            tier=result.tier.value,
+            tier=result.tier.value if result.tier else "not_a_pay_request",
             category=result.classification.category,
             escalated=result.escalated,
             escalation_reason=result.escalation_reason,
@@ -160,18 +164,40 @@ def request_text(state: RequestState) -> str:
 def route_by_tier(state: RequestState) -> str:
     """Choose the path for a classified request.
 
-    A request that failed classification, or that somehow has no tier,
-    ends rather than defaulting to a path. Defaulting would mean choosing
-    a disclosure level for a request nobody classified.
+    A request that failed classification ends by falling through to the
+    degraded response. One that was classified but is not a pay request
+    at all — a greeting, small talk — gets a short, immediate answer
+    rather than running the disclosure pipeline on input that was never a
+    real request.
     """
     if state.get("errors"):
         return DEGRADED
 
     tier = state.get("tier")
     if tier is None:
-        return END
+        return RESPOND_NOT_APPLICABLE
 
     return TIER_NODES[tier]
+
+
+NOT_APPLICABLE_MESSAGE = (
+    "This system handles requests for pay information — your own pay, "
+    "how pay is set, or how your pay compares with colleagues doing work "
+    "of equal value. Send a request like that and it will be answered."
+)
+
+
+async def respond_not_applicable_node(state: RequestState) -> dict[str, Any]:
+    """Answer input that was never a pay-information request.
+
+    No model call: the classifier has already decided this is not a real
+    request, and composing an answer to it would be spending a call on
+    something with nothing to answer.
+    """
+    return {
+        "status": RequestStatus.COMPLETED,
+        **audited(Actor.SYSTEM, "not_applicable_response_issued"),
+    }
 
 
 async def respond_informational_node(state: RequestState) -> dict[str, Any]:
@@ -677,6 +703,10 @@ def build_graph(checkpointer: Any = None) -> CompiledStateGraph[Any, Any, Any]:
     builder.add_node(APPROVAL, _traced(APPROVAL, approval_node))
     builder.add_node(VALIDATOR, _traced(VALIDATOR, validator_node))
     builder.add_node(DEGRADED, _traced(DEGRADED, degraded_node))
+    builder.add_node(
+        RESPOND_NOT_APPLICABLE,
+        _traced(RESPOND_NOT_APPLICABLE, respond_not_applicable_node),
+    )
 
     builder.add_edge(START, INTAKE)
     builder.add_conditional_edges(
@@ -686,6 +716,7 @@ def build_graph(checkpointer: Any = None) -> CompiledStateGraph[Any, Any, Any]:
             RESPOND_INFORMATIONAL: RESPOND_INFORMATIONAL,
             RESPOND_OWN_DATA: RESPOND_OWN_DATA,
             ANALYST: ANALYST,
+            RESPOND_NOT_APPLICABLE: RESPOND_NOT_APPLICABLE,
             DEGRADED: DEGRADED,
             END: END,
         },
@@ -694,6 +725,7 @@ def build_graph(checkpointer: Any = None) -> CompiledStateGraph[Any, Any, Any]:
     for source, following in (
         (RESPOND_INFORMATIONAL, END),
         (RESPOND_OWN_DATA, END),
+        (RESPOND_NOT_APPLICABLE, END),
         (ANALYST, REGULATORY),
         (REGULATORY, DRAFTER),
         (DRAFTER, VALIDATOR),

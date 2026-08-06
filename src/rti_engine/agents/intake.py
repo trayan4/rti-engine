@@ -23,6 +23,7 @@ from rti_engine.llm.factory import ModelRole, get_structured_model, with_recorde
 from rti_engine.llm.served import ModelRecorder
 
 RequestCategory = Literal[
+    "not_a_pay_request",
     "general_information",
     "own_pay",
     "comparator_disclosure",
@@ -56,7 +57,10 @@ class IntakeResult(BaseModel):
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
-    tier: AutonomyTier
+    tier: AutonomyTier | None
+    """None for input that is not a pay-information request at all — there
+    is no data-access level to assign, since nothing will be accessed."""
+
     classification: IntakeClassification
     escalated: bool
     """True where code raised the tier above what the model returned."""
@@ -83,6 +87,8 @@ You classify incoming pay-information requests from employees.
 
 ## Tiers
 
+- **not_a_pay_request** — the message is not asking about pay at all: a
+  greeting, small talk, or something unrelated to pay information.
 - **general_information** — the requester asks how pay is set, what their
   rights are, or what the law requires. No employee data is needed.
 - **own_pay** — the requester asks about their own pay, level, bonus or
@@ -115,13 +121,18 @@ review at all. These are not equivalent errors.
 )
 
 
-def _apply_floor(classification: IntakeClassification) -> tuple[AutonomyTier, str | None]:
+def _apply_floor(
+    classification: IntakeClassification,
+) -> tuple[AutonomyTier | None, str | None]:
     """Derive the tier from the classification, escalating where required.
 
     The model's category is advisory. Comparator data and self-declared
     ambiguity both force T2 here, so a misclassification cannot release
     data that a human has not seen.
     """
+    if classification.category == "not_a_pay_request":
+        return None, None
+
     if classification.seeks_comparator_data:
         return AutonomyTier.T2, "request touches pay data about other employees"
 

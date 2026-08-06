@@ -24,6 +24,7 @@ from rti_engine.agents.graph import (
     DRAFTER,
     REGULATORY,
     RESPOND_INFORMATIONAL,
+    RESPOND_NOT_APPLICABLE,
     RESPOND_OWN_DATA,
     TIER_NODES,
     _guarded,
@@ -95,9 +96,11 @@ def test_every_tier_has_a_path() -> None:
     assert set(TIER_NODES) == set(AutonomyTier)
 
 
-def test_an_unclassified_request_ends_rather_than_defaulting() -> None:
-    """Defaulting would mean choosing a disclosure level nobody decided."""
-    assert route_by_tier(state(tier=None)) == END
+def test_an_unclassified_request_gets_the_not_applicable_response() -> None:
+    """A tier of None means the request was never a pay request at all,
+    not that it failed classification — routing it to a fixed response
+    is not defaulting to a disclosure level nobody decided."""
+    assert route_by_tier(state(tier=None)) == RESPOND_NOT_APPLICABLE
 
 
 def test_a_failed_request_reaches_the_degraded_response() -> None:

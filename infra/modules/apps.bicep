@@ -183,7 +183,7 @@ resource analyticsMcp 'Microsoft.App/containerApps@2024-03-01' = {
         {
           name: 'analytics'
           image: image
-          command: ['python', '-m', 'rti_engine.mcp.analytics_server']
+          command: ['docker-entrypoint.sh', 'python', '-m', 'rti_engine.mcp.analytics_server']
           env: concat(sharedEnv, [
             { name: 'MCP_TRANSPORT', value: 'http' }
             { name: 'MCP_PORT', value: '8080' }
@@ -223,7 +223,7 @@ resource knowledgeMcp 'Microsoft.App/containerApps@2024-03-01' = {
         {
           name: 'knowledge'
           image: image
-          command: ['python', '-m', 'rti_engine.mcp.knowledge_server']
+          command: ['docker-entrypoint.sh', 'python', '-m', 'rti_engine.mcp.knowledge_server']
           env: concat(sharedEnv, [
             { name: 'MCP_TRANSPORT', value: 'http' }
             { name: 'MCP_PORT', value: '8080' }
@@ -263,14 +263,7 @@ resource api 'Microsoft.App/containerApps@2024-03-01' = {
         {
           name: 'api'
           image: image
-          command: [
-            'uvicorn'
-            'rti_engine.api.app:app'
-            '--host'
-            '0.0.0.0'
-            '--port'
-            '8000'
-          ]
+          command: ['docker-entrypoint.sh', 'uvicorn', 'rti_engine.api.app:app', '--host', '0.0.0.0', '--port', '8000']
           env: concat(sharedEnv, [
             {
               name: 'ANALYTICS_MCP_URL'
@@ -318,15 +311,7 @@ resource ui 'Microsoft.App/containerApps@2024-03-01' = {
         {
           name: 'ui'
           image: image
-          command: [
-            'streamlit'
-            'run'
-            'src/rti_engine/ui/app.py'
-            '--server.port'
-            '8501'
-            '--server.address'
-            '0.0.0.0'
-          ]
+          command: ['docker-entrypoint.sh', 'streamlit', 'run', 'src/rti_engine/ui/app.py', '--server.port', '8501', '--server.address', '0.0.0.0']
           env: [
             {
               name: 'RTI_API_URL'

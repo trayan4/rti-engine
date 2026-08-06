@@ -30,6 +30,8 @@ from pydantic import BaseModel, ConfigDict, Field
 from rti_engine.agents.analyst import analyse_requester_group
 from rti_engine.agents.budget import degraded_detail, degraded_letter, over_budget
 from rti_engine.agents.drafter import (
+    DraftLetter,
+    LetterSection,
     build_fact_sheet,
     build_legal_position,
     draft_response,
@@ -194,7 +196,17 @@ async def respond_not_applicable_node(state: RequestState) -> dict[str, Any]:
     request, and composing an answer to it would be spending a call on
     something with nothing to answer.
     """
+    letter = DraftLetter(
+        subject="Your message",
+        salutation="Dear colleague,",
+        sections=[LetterSection(heading="", body=NOT_APPLICABLE_MESSAGE)],
+        closing="Yours sincerely,",
+        figures_used=[],
+        citations=[],
+    )
+
     return {
+        "draft": letter,
         "status": RequestStatus.COMPLETED,
         **audited(Actor.SYSTEM, "not_applicable_response_issued"),
     }

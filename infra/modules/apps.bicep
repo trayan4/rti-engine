@@ -28,6 +28,7 @@ param azureOpenAiMiniDeployment string
 param azureOpenAiEmbeddingDeployment string
 param anthropicModel string
 param groqModel string
+param langsmithProject string
 param pineconeIndex string
 param appInsightsConnectionString string
 
@@ -70,6 +71,7 @@ var secretNames = [
   'neo4j-password'
   'database-admin-password'
   'postgres-dsn'
+  'langsmith-api-key'
 ]
 
 var sharedSecrets = [
@@ -108,6 +110,9 @@ var sharedEnv = [
   { name: 'ANTHROPIC_MODEL', value: anthropicModel }
   { name: 'GROQ_API_KEY', secretRef: 'groq-api-key' }
   { name: 'GROQ_MODEL', value: groqModel }
+  { name: 'LANGSMITH_API_KEY', secretRef: 'langsmith-api-key' }
+  { name: 'LANGSMITH_PROJECT', value: langsmithProject }
+  { name: 'LANGCHAIN_TRACING_V2', value: 'true' }
   { name: 'PINECONE_API_KEY', secretRef: 'pinecone-api-key' }
   { name: 'PINECONE_INDEX', value: pineconeIndex }
   { name: 'NEO4J_PASSWORD', secretRef: 'neo4j-password' }

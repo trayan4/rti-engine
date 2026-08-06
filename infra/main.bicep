@@ -43,6 +43,13 @@ param anthropicModel string
 @description('Model name for the Groq fallback (e.g. llama-3.3-70b-versatile).')
 param groqModel string
 
+@description('LangSmith API key for tracing. Left empty means tracing stays off.')
+@secure()
+param langsmithApiKey string
+
+@description('LangSmith project name traces are grouped under.')
+param langsmithProject string = 'rti-engine'
+
 @description('Image tag to deploy. Only used when deployApps is true.')
 param imageTag string = 'latest'
 
@@ -107,6 +114,7 @@ module secrets 'modules/secrets.bicep' = {
     pineconeApiKey: pineconeApiKey
     neo4jPassword: neo4jPassword
     databaseAdminPassword: databaseAdminPassword
+    langsmithApiKey: langsmithApiKey
   }
 }
 
@@ -195,6 +203,7 @@ module apps 'modules/apps.bicep' = if (deployApps) {
     azureOpenAiEmbeddingDeployment: azureOpenAiEmbeddingDeployment
     anthropicModel: anthropicModel
     groqModel: groqModel
+    langsmithProject: langsmithProject
     imageTag: imageTag
   }
 }

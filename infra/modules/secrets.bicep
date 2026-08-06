@@ -23,6 +23,9 @@ param azureOpenAiApiKey string
 param anthropicApiKey string
 
 @secure()
+param langsmithApiKey string
+
+@secure()
 param groqApiKey string
 
 @secure()
@@ -66,6 +69,7 @@ var secrets = [
   { name: 'pinecone-api-key', value: pineconeApiKey }
   { name: 'neo4j-password', value: neo4jPassword }
   { name: 'database-admin-password', value: databaseAdminPassword }
+  { name: 'langsmith-api-key', value: langsmithApiKey }
 ]
 
 resource storedSecrets 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = [

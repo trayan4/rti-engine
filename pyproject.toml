@@ -27,6 +27,7 @@ dependencies = [
     "langgraph-checkpoint-postgres>=3.1.1",
     "langsmith>=0.10.10",
     "lxml>=6.1.1",
+    "mcp>=1.29.0,<2",
     "neo4j>=6.2.0",
     "numpy>=2.5.1",
     "openevals>=0.2.0",

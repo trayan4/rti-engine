@@ -60,7 +60,12 @@ def run(server: Any) -> None:
     settings = get_settings()
 
     if settings.mcp_transport == "http":
-        server.run(transport="http", host="0.0.0.0", port=settings.mcp_port)  # noqa: S104
+        server.run(
+            transport="http",
+            host="0.0.0.0",  # noqa: S104
+            port=settings.mcp_port,
+            stateless_http=True,
+        )
         return
 
     server.run()

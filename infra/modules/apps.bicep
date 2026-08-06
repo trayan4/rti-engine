@@ -112,7 +112,7 @@ var sharedEnv = [
   { name: 'PINECONE_INDEX', value: pineconeIndex }
   { name: 'NEO4J_PASSWORD', secretRef: 'neo4j-password' }
   { name: 'NEO4J_USERNAME', value: 'neo4j' }
-  { name: 'NEO4J_URI', value: 'bolt://${neo4j.properties.configuration.ingress.fqdn}:7687' }
+  { name: 'NEO4J_URI', value: 'http://${neo4j.properties.configuration.ingress.fqdn}:7474' }
   { name: 'POSTGRES_DSN', secretRef: 'postgres-dsn' }
   {
     name: 'APPLICATIONINSIGHTS_CONNECTION_STRING'
@@ -134,8 +134,8 @@ resource neo4j 'Microsoft.App/containerApps@2024-03-01' = {
       secrets: [neo4jSecret, neo4jAuthSecretRef]
       ingress: {
         external: false
-        targetPort: 7687
-        transport: 'tcp'
+        targetPort: 7474
+        transport: 'http'
       }
     }
     template: {

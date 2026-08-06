@@ -12,6 +12,13 @@ pure Python: a relationship inferred by a model can be wrong without
 anything downstream noticing, and the value of the graph lies in its
 claims being checkable.
 
+Reached over HTTP rather than the Bolt driver's binary protocol. Bolt is
+raw TCP, and this deployment's environment cannot route TCP-transport
+ingress between container apps reliably — confirmed a platform-level gap,
+not a configuration one, after eliminating every configuration cause.
+HTTP rides the same ingress path already proven for the API and both MCP
+servers.
+
 Constraints are applied idempotently so ingestion can be re-run after a
 change without duplicating nodes.
 """
@@ -21,7 +28,7 @@ from contextlib import contextmanager
 from functools import lru_cache
 from typing import Any
 
-from neo4j import Driver, GraphDatabase, Session
+import httpx
 
 from rti_engine.config.settings import get_settings
 
@@ -42,9 +49,25 @@ Uniqueness is what makes ingestion idempotent: a MERGE on a constrained
 property updates the existing node rather than creating a second one.
 """
 
+DEFAULT_DATABASE = "neo4j"
+
+REQUEST_TIMEOUT_SECONDS = 30.0
+"""Generous for a graph this size. A query that needs longer than this is
+one of the six named templates behaving unexpectedly, not a slow query
+worth waiting out."""
+
 
 class GraphConfigurationError(RuntimeError):
     """Raised when the graph is used without being configured."""
+
+
+class GraphQueryError(RuntimeError):
+    """Raised when Neo4j's HTTP endpoint reports a query error.
+
+    Kept distinct from a connectivity failure: this means the request
+    reached the server and was rejected — a syntax error or a constraint
+    violation — not that the server could not be reached at all.
+    """
 
 
 def _require(value: str | None, name: str) -> str:
@@ -54,36 +77,75 @@ def _require(value: str | None, name: str) -> str:
     return value
 
 
-@lru_cache
-def get_driver() -> Driver:
-    """Return the process-wide driver, created on first use.
+class GraphSession:
+    """A thin client over Neo4j's HTTP Cypher transaction endpoint.
 
-    The driver owns a connection pool and is thread-safe; one per process
-    is both sufficient and correct.
+    One statement per call, auto-committed. Nothing here holds a
+    transaction open across calls, so there is no session state that
+    could leak between agents sharing a process — a property the Bolt
+    driver's session object had to be closed to guarantee, and this does
+    not need to.
+    """
+
+    def __init__(self, client: httpx.Client, endpoint: str) -> None:
+        self._client = client
+        self._endpoint = endpoint
+
+    def run(self, cypher: str, **parameters: Any) -> list[dict[str, Any]]:
+        """Run one statement and return its rows as plain dictionaries."""
+        response = self._client.post(
+            self._endpoint,
+            json={"statements": [{"statement": cypher, "parameters": parameters}]},
+        )
+        response.raise_for_status()
+        body = response.json()
+
+        if errors := body.get("errors"):
+            raise GraphQueryError("; ".join(e.get("message", str(e)) for e in errors))
+
+        rows: list[dict[str, Any]] = []
+        for result in body.get("results", []):
+            columns = result.get("columns", [])
+            for record in result.get("data", []):
+                rows.append(dict(zip(columns, record.get("row", []), strict=True)))
+        return rows
+
+
+@lru_cache
+def _get_client() -> httpx.Client:
+    """Return the process-wide HTTP client, created on first use.
+
+    One client per process is both sufficient and correct: httpx.Client
+    pools connections internally the same way the Bolt driver pooled its
+    own.
     """
     settings = get_settings()
-    return GraphDatabase.driver(
-        _require(settings.neo4j_uri, "NEO4J_URI"),
+    return httpx.Client(
         auth=(
             _require(settings.neo4j_username, "NEO4J_USERNAME"),
             _require(settings.neo4j_password, "NEO4J_PASSWORD"),
         ),
+        timeout=REQUEST_TIMEOUT_SECONDS,
     )
 
 
+def _endpoint() -> str:
+    """Return the Cypher transaction endpoint for the configured server."""
+    settings = get_settings()
+    base = _require(settings.neo4j_uri, "NEO4J_URI").rstrip("/")
+    return f"{base}/db/{DEFAULT_DATABASE}/tx/commit"
+
+
 @contextmanager
-def graph_session() -> Iterator[Session]:
-    """Provide a session, closed on exit."""
-    session = get_driver().session()
-    try:
-        yield session
-    finally:
-        session.close()
+def graph_session() -> Iterator[GraphSession]:
+    """Provide a session. Nothing to close: each call is its own request."""
+    yield GraphSession(_get_client(), _endpoint())
 
 
 def verify_connectivity() -> None:
     """Raise if the database is unreachable or the credentials are wrong."""
-    get_driver().verify_connectivity()
+    with graph_session() as session:
+        session.run("RETURN 1")
 
 
 def apply_schema() -> None:

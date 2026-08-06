@@ -136,7 +136,6 @@ resource neo4j 'Microsoft.App/containerApps@2024-03-01' = {
         external: false
         targetPort: 7687
         transport: 'tcp'
-        exposedPort: 7687
       }
     }
     template: {

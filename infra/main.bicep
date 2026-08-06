@@ -34,6 +34,9 @@ param azureOpenAiChatDeployment string
 @description('Deployment name for the classification model (e.g. gpt-5.6-luna).')
 param azureOpenAiMiniDeployment string
 
+@description('Deployment name for the embedding model (e.g. text-embedding-3-small).')
+param azureOpenAiEmbeddingDeployment string
+
 @description('Model name for the Anthropic fallback (e.g. claude-sonnet-5).')
 param anthropicModel string
 
@@ -181,6 +184,7 @@ module apps 'modules/apps.bicep' = if (deployApps) {
     appInsightsConnectionString: observability.outputs.connectionString
     azureOpenAiChatDeployment: azureOpenAiChatDeployment
     azureOpenAiMiniDeployment: azureOpenAiMiniDeployment
+    azureOpenAiEmbeddingDeployment: azureOpenAiEmbeddingDeployment
     anthropicModel: anthropicModel
     groqModel: groqModel
     imageTag: imageTag

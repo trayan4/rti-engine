@@ -155,6 +155,14 @@ module postgresDsnSecret 'modules/postgres-dsn-secret.bicep' = {
   }
 }
 
+module neo4jAuthSecret 'modules/neo4j-auth-secret.bicep' = {
+  name: 'neo4j-auth-secret'
+  params: {
+    vaultName: secrets.outputs.vaultName
+    neo4jPassword: neo4jPassword
+  }
+}
+
 module archive 'modules/archive.bicep' = {
   name: 'archive'
   params: {

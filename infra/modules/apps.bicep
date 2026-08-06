@@ -89,6 +89,13 @@ var neo4jSecret = {
 // The password is a secret reference rather than part of a connection
 // string, because a full DSN in an environment variable would put the
 // credential into every process listing and crash dump.
+
+var neo4jAuthSecretRef = {
+  name: 'neo4j-auth'
+  keyVaultUrl: '${vaultUri}secrets/neo4j-auth'
+  identity: identityId
+}
+
 var sharedEnv = [
   { name: 'APP_ENV', value: 'azure' }
   { name: 'AZURE_CLIENT_ID', value: identityClientId }
@@ -124,7 +131,7 @@ resource neo4j 'Microsoft.App/containerApps@2024-03-01' = {
   properties: {
     environmentId: environmentId
     configuration: {
-      secrets: [neo4jSecret]
+      secrets: [neo4jSecret, neo4jAuthSecretRef]
       ingress: {
         external: false
         targetPort: 7687
@@ -138,8 +145,7 @@ resource neo4j 'Microsoft.App/containerApps@2024-03-01' = {
           name: 'neo4j'
           image: 'neo4j:5-community'
           env: [
-            { name: 'NEO4J_AUTH_FILE', value: '' }
-            { name: 'NEO4J_PASSWORD', secretRef: 'neo4j-password' }
+            { name: 'NEO4J_AUTH', secretRef: 'neo4j-auth' }
             {
               name: 'NEO4J_server_default__listen__address'
               value: '0.0.0.0'

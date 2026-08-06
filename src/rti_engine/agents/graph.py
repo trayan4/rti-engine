@@ -553,7 +553,6 @@ def approval_payload(state: RequestState) -> dict[str, Any]:
         "advisory_findings": [
             {"kind": finding.kind, "problem": finding.problem} for finding in review.advisory
         ],
-        "decisions": [APPROVED, REJECTED, CHANGES_REQUESTED],
     }
 
 

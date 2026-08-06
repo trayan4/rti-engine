@@ -297,7 +297,6 @@ def test_the_payload_carries_the_findings_a_reviewer_needs() -> None:
     assert len(payload["blocking_findings"]) == 2
     assert payload["revisions_used"] == 2
     assert payload["figures_used"][0]["value"] == "7.8%"
-    assert set(payload["decisions"]) == set(DECISION_STATUS)
 
 
 def test_a_payload_needs_both_a_draft_and_a_review() -> None:

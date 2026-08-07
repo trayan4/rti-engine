@@ -29,6 +29,7 @@ param azureOpenAiEmbeddingDeployment string
 param anthropicModel string
 param groqModel string
 param langsmithProject string
+param archiveAccountName string
 param pineconeIndex string
 param appInsightsConnectionString string
 
@@ -113,6 +114,7 @@ var sharedEnv = [
   { name: 'LANGSMITH_API_KEY', secretRef: 'langsmith-api-key' }
   { name: 'LANGSMITH_PROJECT', value: langsmithProject }
   { name: 'LANGCHAIN_TRACING_V2', value: 'true' }
+  { name: 'ARCHIVE_ACCOUNT_NAME', value: archiveAccountName }
   { name: 'PINECONE_API_KEY', secretRef: 'pinecone-api-key' }
   { name: 'PINECONE_INDEX', value: pineconeIndex }
   { name: 'NEO4J_PASSWORD', secretRef: 'neo4j-password' }

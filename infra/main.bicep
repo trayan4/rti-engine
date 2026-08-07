@@ -204,6 +204,7 @@ module apps 'modules/apps.bicep' = if (deployApps) {
     anthropicModel: anthropicModel
     groqModel: groqModel
     langsmithProject: langsmithProject
+    archiveAccountName: archive.outputs.accountName
     imageTag: imageTag
   }
 }
@@ -211,6 +212,7 @@ module apps 'modules/apps.bicep' = if (deployApps) {
 output apiUrl string = apps.?outputs.apiUrl ?? ''
 output uiUrl string = apps.?outputs.uiUrl ?? ''
 output vaultName string = secrets.outputs.vaultName
+output archiveAccountName string = archive.outputs.accountName
 output identityId string = identity.outputs.identityId
 output databaseHost string = database.outputs.host
 output neo4jHost string = apps.?outputs.neo4jFqdn ?? ''

@@ -17,6 +17,8 @@ has already been told their request is settled; losing the archive copy
 is a problem to notice and fix, not one to surface to them.
 """
 
+import asyncio
+import logging
 from datetime import UTC, datetime
 from typing import Any
 
@@ -31,6 +33,8 @@ from rti_engine.agents.state import AuditEntry, RequestState
 from rti_engine.config.settings import get_settings
 from rti_engine.guardrails.numbers import ValidationResult
 from rti_engine.observability.otel import span
+
+logger = logging.getLogger(__name__)
 
 BUNDLE_SCHEMA_VERSION = 1
 
@@ -223,6 +227,13 @@ async def archive_settled_request(state: "RequestState") -> str | None:
     )
 
     try:
-        return archive_bundle(bundle)
-    except ArchiveError:
+        path = await asyncio.to_thread(archive_bundle, bundle)
+    except Exception:
+        logger.exception("archival failed for request %s", bundle.request_id)
         return None
+
+    if path is None:
+        logger.info("archival skipped for request %s: not configured", bundle.request_id)
+    else:
+        logger.info("archived request %s to %s", bundle.request_id, path)
+    return path

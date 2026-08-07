@@ -213,6 +213,7 @@ output uiUrl string = apps.?outputs.uiUrl ?? ''
 output vaultName string = secrets.outputs.vaultName
 output identityId string = identity.outputs.identityId
 output databaseHost string = database.outputs.host
+output neo4jHost string = apps.?outputs.neo4jFqdn ?? ''
 output workspaceId string = observability.outputs.workspaceId
 output appInsightsConnectionString string = observability.outputs.connectionString
 output registryServer string = platform.outputs.registryServer

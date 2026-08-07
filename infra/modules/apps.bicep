@@ -346,3 +346,4 @@ resource ui 'Microsoft.App/containerApps@2024-03-01' = {
 
 output apiUrl string = 'https://${api.properties.configuration.ingress.fqdn}'
 output uiUrl string = 'https://${ui.properties.configuration.ingress.fqdn}'
+output neo4jFqdn string = neo4j.properties.configuration.ingress.fqdn

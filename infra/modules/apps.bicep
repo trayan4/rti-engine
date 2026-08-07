@@ -138,7 +138,14 @@ resource neo4j 'Microsoft.App/containerApps@2024-03-01' = {
     configuration: {
       secrets: [neo4jSecret, neo4jAuthSecretRef]
       ingress: {
-        external: false
+        // External, matching the API and UI: this environment's TCP-ingress
+        // dataplane has a platform-level bug, but HTTP-transport external
+        // ingress is already proven working. A GitHub Actions runner has
+        // no route to an internal-only address at all, and the CD step
+        // that seeds this graph needs to reach it from outside Azure.
+        // App-level authentication (the neo4j username/password) still
+        // gates access regardless of network visibility.
+        external: true
         targetPort: 7474
         transport: 'http'
       }

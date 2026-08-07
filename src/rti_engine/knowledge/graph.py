@@ -51,10 +51,16 @@ property updates the existing node rather than creating a second one.
 
 DEFAULT_DATABASE = "neo4j"
 
-REQUEST_TIMEOUT_SECONDS = 30.0
-"""Generous for a graph this size. A query that needs longer than this is
-one of the six named templates behaving unexpectedly, not a slow query
-worth waiting out."""
+CONNECT_TIMEOUT_SECONDS = 20.0
+"""Azure's internal HTTP ingress has occasionally taken longer than a
+single connection attempt should reasonably need — a platform behaviour
+seen during deployment, not a property of this database. Generous enough
+to absorb that without masking a genuine outage."""
+
+READ_TIMEOUT_SECONDS = 15.0
+"""These are six hand-authored templates against a small graph. A read
+this slow means something is actually wrong, not that the query needs
+more time."""
 
 
 class GraphConfigurationError(RuntimeError):
@@ -125,7 +131,9 @@ def _get_client() -> httpx.Client:
             _require(settings.neo4j_username, "NEO4J_USERNAME"),
             _require(settings.neo4j_password, "NEO4J_PASSWORD"),
         ),
-        timeout=REQUEST_TIMEOUT_SECONDS,
+        timeout=httpx.Timeout(
+            connect=CONNECT_TIMEOUT_SECONDS, read=READ_TIMEOUT_SECONDS, write=10.0, pool=10.0
+        ),
     )
 
 
